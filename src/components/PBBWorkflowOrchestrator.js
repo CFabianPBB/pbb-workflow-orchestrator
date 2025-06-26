@@ -168,6 +168,53 @@ const PBBWorkflowOrchestrator = () => {
           if (inventoryResponse.url.includes('/download/')) {
             const inventoryDownloadUrl = inventoryResponse.url;
             console.log("🎯 Using response URL as download URL:", inventoryDownloadUrl);
+            
+            // Download the file to pass to next step
+            const fileResponse = await fetch(inventoryDownloadUrl);
+            if (!fileResponse.ok) {
+              throw new Error(`Failed to download file: ${fileResponse.status}`);
+            }
+            const blob = await fileResponse.blob();
+            inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            
+            setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
+            setOutputFiles(prev => ({
+              ...prev, 
+              programInventory: {
+                name: 'program_inventory.xlsx',
+                downloadUrl: inventoryDownloadUrl
+              }
+            }));
+          } else {
+            throw new Error("Got task URL but not download URL");
+          }
+        } else {
+          // Try to extract download URL from HTML
+          const inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
+          
+          if (inventoryDownloadUrl) {
+            console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
+            
+            // Download the file to pass to next step
+            const fileResponse = await fetch(inventoryDownloadUrl);
+            if (!fileResponse.ok) {
+              throw new Error(`Failed to download file: ${fileResponse.status}`);
+            }
+            const blob = await fileResponse.blob();
+            inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            
+            setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
+            setOutputFiles(prev => ({
+              ...prev, 
+              programInventory: {
+                name: 'program_inventory.xlsx',
+                downloadUrl: inventoryDownloadUrl
+              }
+            }));
+          } else {
+            throw new Error("Could not find download URL in Program Inventory response");
+          }
+        }
         
             // Download the file to pass to next step
             const fileResponse = await fetch(inventoryDownloadUrl);
