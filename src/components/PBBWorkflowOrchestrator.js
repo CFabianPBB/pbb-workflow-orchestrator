@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Upload, PlayCircle, CheckCircle, AlertCircle, Info, Download } from 'lucide-react';
-import ApiService from '../services/apiService';
 import config from '../config';
 
 const PBBWorkflowOrchestrator = () => {
@@ -60,6 +59,35 @@ const PBBWorkflowOrchestrator = () => {
   const isReadyToStart = () => {
     return files.personnel && files.departmentBudget && orgName;
   };
+
+  // Helper function to submit form data to individual apps
+  const submitToApp = async (url, formData) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return response;
+  };
+
+  // Helper function to extract download URL from HTML response
+  const extractDownloadUrl = (html, baseUrl) => {
+    // Look for download links in the HTML
+    const downloadLinkMatch = html.match(/href="([^"]*download[^"]*\.xlsx?)"/i);
+    if (downloadLinkMatch) {
+      const downloadPath = downloadLinkMatch[1];
+      // If it's a relative URL, make it absolute
+      if (downloadPath.startsWith('/')) {
+        return baseUrl + downloadPath;
+      }
+      return downloadPath;
+    }
+    return null;
+  };
   
   // Run workflow
   const runWorkflow = async () => {
@@ -81,161 +109,213 @@ const PBBWorkflowOrchestrator = () => {
     });
     
     // Store data for passing between steps
-    let inventoryData = null;
-    let costingData = null;
-    let scoringData = null;
+    let inventoryFile = null;
+    let costingFile = null;
+    let scoringFile = null;
     
     try {
       // Step 1: Program Inventory Agent
       setAgentStatus(prev => ({...prev, programInventory: 'running'}));
-      console.log("Calling Program Inventory API at:", appUrls.programInventory);
+      console.log("🚀 Submitting to Program Inventory App...");
       
       try {
-        const inventoryResponse = await ApiService.programInventory.generateInventory(
-          files.personnel,
-          files.website,
-          orgName
-        );
+        // Create form data for Program Inventory
+        const inventoryFormData = new FormData();
+        inventoryFormData.append('file', files.personnel);
+        inventoryFormData.append('website_url', files.website || '');
+        inventoryFormData.append('programs_per_department', '5'); // Default value
         
-        // DEBUG LOGGING
-        console.log("📥 Program Inventory FULL Response:", inventoryResponse);
-        console.log("📥 Program Inventory Response keys:", Object.keys(inventoryResponse));
-        console.log("📥 Program Inventory Download URL field:", inventoryResponse.download_url);
+        console.log("📤 Sending form data to:", appUrls.programInventory);
         
-        inventoryData = inventoryResponse.inventory_data;
+        // Submit to Program Inventory app
+        const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
+        const inventoryHtml = await inventoryResponse.text();
         
-        setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
-        setOutputFiles(prev => ({
-          ...prev, 
-          programInventory: {
-            name: 'program_inventory.xlsx',
-            downloadUrl: inventoryResponse.download_url,
-            data: inventoryData
-          }
-        }));
+        console.log("📥 Program Inventory Response received");
+        
+        // Extract download URL from response
+        const inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
+        
+        if (inventoryDownloadUrl) {
+          console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
+          
+          // Download the file to pass to next step
+          const fileResponse = await fetch(inventoryDownloadUrl);
+          const blob = await fileResponse.blob();
+          inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          
+          setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
+          setOutputFiles(prev => ({
+            ...prev, 
+            programInventory: {
+              name: 'program_inventory.xlsx',
+              downloadUrl: inventoryDownloadUrl
+            }
+          }));
+        } else {
+          throw new Error("Could not find download URL in Program Inventory response");
+        }
       } catch (error) {
-        console.error("Program Inventory API Error:", error);
+        console.error("❌ Program Inventory Error:", error);
         setAgentStatus(prev => ({...prev, programInventory: 'error'}));
         setErrorMessages(prev => ({
           ...prev,
-          programInventory: `Error: ${error.response?.data?.error || error.message}`
+          programInventory: `Error: ${error.message}`
         }));
         throw new Error("Program Inventory step failed");
       }
       
       // Step 2: Cost Allocation Agent
       setAgentStatus(prev => ({...prev, costAllocation: 'running'}));
-      console.log("Calling Cost Allocation API at:", appUrls.costAllocation);
+      console.log("🚀 Submitting to Cost Allocation App...");
       
       try {
-        // Pass inventory data to the cost allocation service
-        const costingResponse = await ApiService.costAllocation.allocateCosts(
-          inventoryData, 
-          files.departmentBudget,
-          orgName
-        );
+        // Create form data for Cost Allocation
+        const costFormData = new FormData();
+        costFormData.append('program_inventory', inventoryFile);
+        costFormData.append('department_budget', files.departmentBudget);
+        costFormData.append('organization_name', orgName);
         
-        // DEBUG LOGGING
-        console.log("📥 Cost Allocation FULL Response:", costingResponse);
-        console.log("📥 Cost Allocation Response keys:", Object.keys(costingResponse));
-        console.log("📥 Cost Allocation Download URL field:", costingResponse.download_url);
+        console.log("📤 Sending form data to:", appUrls.costAllocation);
         
-        costingData = costingResponse.cost_data;
+        // Submit to Cost Allocation app
+        const costResponse = await submitToApp(appUrls.costAllocation, costFormData);
+        const costHtml = await costResponse.text();
         
-        setAgentStatus(prev => ({...prev, costAllocation: 'completed'}));
-        setOutputFiles(prev => ({
-          ...prev, 
-          costAllocation: {
-            name: 'program_costs.xlsx',
-            downloadUrl: costingResponse.download_url,
-            data: costingData
-          }
-        }));
+        console.log("📥 Cost Allocation Response received");
+        
+        // Extract download URL from response
+        const costDownloadUrl = extractDownloadUrl(costHtml, appUrls.costAllocation);
+        
+        if (costDownloadUrl) {
+          console.log("✅ Cost Allocation Download URL found:", costDownloadUrl);
+          
+          // Download the file to pass to next step
+          const fileResponse = await fetch(costDownloadUrl);
+          const blob = await fileResponse.blob();
+          costingFile = new File([blob], 'program_costs.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          
+          setAgentStatus(prev => ({...prev, costAllocation: 'completed'}));
+          setOutputFiles(prev => ({
+            ...prev, 
+            costAllocation: {
+              name: 'program_costs.xlsx',
+              downloadUrl: costDownloadUrl
+            }
+          }));
+        } else {
+          throw new Error("Could not find download URL in Cost Allocation response");
+        }
       } catch (error) {
-        console.error("Cost Allocation API Error:", error);
+        console.error("❌ Cost Allocation Error:", error);
         setAgentStatus(prev => ({...prev, costAllocation: 'error'}));
         setErrorMessages(prev => ({
           ...prev,
-          costAllocation: `Error: ${error.response?.data?.error || error.message}`
+          costAllocation: `Error: ${error.message}`
         }));
         throw new Error("Cost Allocation step failed");
       }
       
       // Step 3: Program Scoring Agent
       setAgentStatus(prev => ({...prev, programScoring: 'running'}));
-      console.log("Calling Program Scoring API at:", appUrls.programScoring);
+      console.log("🚀 Submitting to Program Scoring App...");
       
       try {
-        // Pass costing data to the program scoring service
-        const scoringResponse = await ApiService.programScoring.evaluatePrograms(
-          costingData,
-          orgName
-        );
+        // Create form data for Program Scoring
+        const scoringFormData = new FormData();
+        scoringFormData.append('file', costingFile);
+        scoringFormData.append('organization_name', orgName);
         
-        // DEBUG LOGGING
-        console.log("📥 Program Scoring FULL Response:", scoringResponse);
-        console.log("📥 Program Scoring Response keys:", Object.keys(scoringResponse));
-        console.log("📥 Program Scoring Download URL field:", scoringResponse.download_url);
+        console.log("📤 Sending form data to:", appUrls.programScoring);
         
-        scoringData = scoringResponse.scoring_data;
+        // Submit to Program Scoring app
+        const scoringResponse = await submitToApp(appUrls.programScoring, scoringFormData);
+        const scoringHtml = await scoringResponse.text();
         
-        setAgentStatus(prev => ({...prev, programScoring: 'completed'}));
-        setOutputFiles(prev => ({
-          ...prev, 
-          programScoring: {
-            name: 'program_scores.xlsx',
-            downloadUrl: scoringResponse.download_url,
-            data: scoringData
-          }
-        }));
+        console.log("📥 Program Scoring Response received");
+        
+        // Extract download URL from response
+        const scoringDownloadUrl = extractDownloadUrl(scoringHtml, appUrls.programScoring);
+        
+        if (scoringDownloadUrl) {
+          console.log("✅ Program Scoring Download URL found:", scoringDownloadUrl);
+          
+          // Download the file to pass to next step
+          const fileResponse = await fetch(scoringDownloadUrl);
+          const blob = await fileResponse.blob();
+          scoringFile = new File([blob], 'program_scores.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          
+          setAgentStatus(prev => ({...prev, programScoring: 'completed'}));
+          setOutputFiles(prev => ({
+            ...prev, 
+            programScoring: {
+              name: 'program_scores.xlsx',
+              downloadUrl: scoringDownloadUrl
+            }
+          }));
+        } else {
+          throw new Error("Could not find download URL in Program Scoring response");
+        }
       } catch (error) {
-        console.error("Program Scoring API Error:", error);
+        console.error("❌ Program Scoring Error:", error);
         setAgentStatus(prev => ({...prev, programScoring: 'error'}));
         setErrorMessages(prev => ({
           ...prev,
-          programScoring: `Error: ${error.response?.data?.error || error.message}`
+          programScoring: `Error: ${error.message}`
         }));
         throw new Error("Program Scoring step failed");
       }
       
       // Step 4: Program Insight Agent
       setAgentStatus(prev => ({...prev, programInsight: 'running'}));
-      console.log("Calling Program Insight API at:", appUrls.programInsight);
+      console.log("🚀 Submitting to Program Insight App...");
       
       try {
-        // Pass scoring data to the program insight service
-        const insightResponse = await ApiService.programInsight.generateInsights(
-          scoringData,
-          orgName
-        );
+        // Create form data for Program Insight
+        const insightFormData = new FormData();
+        insightFormData.append('file', scoringFile);
+        insightFormData.append('organization_name', orgName);
         
-        // DEBUG LOGGING
-        console.log("📥 Program Insight FULL Response:", insightResponse);
-        console.log("📥 Program Insight Response keys:", Object.keys(insightResponse));
-        console.log("📥 Program Insight Download URL field:", insightResponse.download_url);
+        console.log("📤 Sending form data to:", appUrls.programInsight);
         
-        setAgentStatus(prev => ({...prev, programInsight: 'completed'}));
-        setOutputFiles(prev => ({
-          ...prev, 
-          programInsight: {
-            name: 'program_insights.xlsx',
-            downloadUrl: insightResponse.download_url,
-            data: insightResponse.insight_data
-          }
-        }));
+        // Submit to Program Insight app
+        const insightResponse = await submitToApp(appUrls.programInsight, insightFormData);
+        const insightHtml = await insightResponse.text();
+        
+        console.log("📥 Program Insight Response received");
+        
+        // Extract download URL from response
+        const insightDownloadUrl = extractDownloadUrl(insightHtml, appUrls.programInsight);
+        
+        if (insightDownloadUrl) {
+          console.log("✅ Program Insight Download URL found:", insightDownloadUrl);
+          
+          setAgentStatus(prev => ({...prev, programInsight: 'completed'}));
+          setOutputFiles(prev => ({
+            ...prev, 
+            programInsight: {
+              name: 'program_insights.xlsx',
+              downloadUrl: insightDownloadUrl
+            }
+          }));
+        } else {
+          throw new Error("Could not find download URL in Program Insight response");
+        }
       } catch (error) {
-        console.error("Program Insight API Error:", error);
+        console.error("❌ Program Insight Error:", error);
         setAgentStatus(prev => ({...prev, programInsight: 'error'}));
         setErrorMessages(prev => ({
           ...prev,
-          programInsight: `Error: ${error.response?.data?.error || error.message}`
+          programInsight: `Error: ${error.message}`
         }));
         throw new Error("Program Insight step failed");
       }
       
       setCurrentStep(4); // All steps completed
+      console.log("🎉 All workflows completed successfully!");
+      
     } catch (error) {
-      console.error("Workflow error:", error);
+      console.error("❌ Workflow error:", error);
       // Main error handling is done in each step
     } finally {
       setIsProcessing(false);
@@ -373,7 +453,7 @@ const PBBWorkflowOrchestrator = () => {
               </div>
             </div>
             {errorMessages.programInventory && (
-              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.programInventory}</div>
+              <div className="mt-2 text-sm text-red-500">{errorMessages.programInventory}</div>
             )}
           </div>
 
@@ -404,7 +484,7 @@ const PBBWorkflowOrchestrator = () => {
               </div>
             </div>
             {errorMessages.costAllocation && (
-              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.costAllocation}</div>
+              <div className="mt-2 text-sm text-red-500">{errorMessages.costAllocation}</div>
             )}
           </div>
 
@@ -435,7 +515,7 @@ const PBBWorkflowOrchestrator = () => {
               </div>
             </div>
             {errorMessages.programScoring && (
-              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.programScoring}</div>
+              <div className="mt-2 text-sm text-red-500">{errorMessages.programScoring}</div>
             )}
           </div>
           
@@ -466,7 +546,7 @@ const PBBWorkflowOrchestrator = () => {
               </div>
             </div>
             {errorMessages.programInsight && (
-              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.programInsight}</div>
+              <div className="mt-2 text-sm text-red-500">{errorMessages.programInsight}</div>
             )}
           </div>
         </div>
