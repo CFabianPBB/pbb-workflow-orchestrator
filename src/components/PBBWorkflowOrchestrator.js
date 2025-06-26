@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, PlayCircle, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { Upload, PlayCircle, CheckCircle, AlertCircle, Info, Download } from 'lucide-react';
 import ApiService from '../services/apiService';
 import config from '../config';
 
@@ -336,14 +336,21 @@ const PBBWorkflowOrchestrator = () => {
               <div className="flex items-center">
                 <StatusIcon status={agentStatus.programInventory} />
                 {outputFiles.programInventory && (
-                  <a href={outputFiles.programInventory.downloadUrl} className="ml-4 text-blue-500 hover:underline text-sm">
+                  <a 
+                    href={outputFiles.programInventory.downloadUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <Download className="w-4 h-4 mr-1" />
                     Download Output
                   </a>
                 )}
               </div>
             </div>
             {errorMessages.programInventory && (
-              <div className="mt-2 text-sm text-red-500">{errorMessages.programInventory}</div>
+              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.programInventory}</div>
             )}
           </div>
 
@@ -360,14 +367,21 @@ const PBBWorkflowOrchestrator = () => {
               <div className="flex items-center">
                 <StatusIcon status={agentStatus.costAllocation} />
                 {outputFiles.costAllocation && (
-                  <a href={outputFiles.costAllocation.downloadUrl} className="ml-4 text-blue-500 hover:underline text-sm">
+                  <a 
+                    href={outputFiles.costAllocation.downloadUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <Download className="w-4 h-4 mr-1" />
                     Download Output
                   </a>
                 )}
               </div>
             </div>
             {errorMessages.costAllocation && (
-              <div className="mt-2 text-sm text-red-500">{errorMessages.costAllocation}</div>
+              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.costAllocation}</div>
             )}
           </div>
 
@@ -384,14 +398,21 @@ const PBBWorkflowOrchestrator = () => {
               <div className="flex items-center">
                 <StatusIcon status={agentStatus.programScoring} />
                 {outputFiles.programScoring && (
-                  <a href={outputFiles.programScoring.downloadUrl} className="ml-4 text-blue-500 hover:underline text-sm">
+                  <a 
+                    href={outputFiles.programScoring.downloadUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <Download className="w-4 h-4 mr-1" />
                     Download Output
                   </a>
                 )}
               </div>
             </div>
             {errorMessages.programScoring && (
-              <div className="mt-2 text-sm text-red-500">{errorMessages.programScoring}</div>
+              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.programScoring}</div>
             )}
           </div>
           
@@ -408,14 +429,21 @@ const PBBWorkflowOrchestrator = () => {
               <div className="flex items-center">
                 <StatusIcon status={agentStatus.programInsight} />
                 {outputFiles.programInsight && (
-                  <a href={outputFiles.programInsight.downloadUrl} className="ml-4 text-blue-500 hover:underline text-sm">
+                  <a 
+                    href={outputFiles.programInsight.downloadUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <Download className="w-4 h-4 mr-1" />
                     Download Output
                   </a>
                 )}
               </div>
             </div>
             {errorMessages.programInsight && (
-              <div className="mt-2 text-sm text-red-500">{errorMessages.programInsight}</div>
+              <div className="mt-2 text-sm text-red-500">Error: {errorMessages.programInsight}</div>
             )}
           </div>
         </div>
