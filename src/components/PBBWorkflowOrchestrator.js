@@ -34,6 +34,7 @@ const PBBWorkflowOrchestrator = () => {
     programScoring: '',
     programInsight: ''
   });
+  
   // File upload handlers
   const handlePersonnelUpload = (e) => {
     if (e.target.files[0]) {
@@ -59,6 +60,7 @@ const PBBWorkflowOrchestrator = () => {
   const isReadyToStart = () => {
     return files.personnel && files.departmentBudget && orgName;
   };
+  
   // Run workflow
   const runWorkflow = async () => {
     if (!isReadyToStart()) return;
@@ -95,6 +97,11 @@ const PBBWorkflowOrchestrator = () => {
           orgName
         );
         
+        // DEBUG LOGGING
+        console.log("📥 Program Inventory FULL Response:", inventoryResponse);
+        console.log("📥 Program Inventory Response keys:", Object.keys(inventoryResponse));
+        console.log("📥 Program Inventory Download URL field:", inventoryResponse.download_url);
+        
         inventoryData = inventoryResponse.inventory_data;
         
         setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
@@ -128,6 +135,11 @@ const PBBWorkflowOrchestrator = () => {
           orgName
         );
         
+        // DEBUG LOGGING
+        console.log("📥 Cost Allocation FULL Response:", costingResponse);
+        console.log("📥 Cost Allocation Response keys:", Object.keys(costingResponse));
+        console.log("📥 Cost Allocation Download URL field:", costingResponse.download_url);
+        
         costingData = costingResponse.cost_data;
         
         setAgentStatus(prev => ({...prev, costAllocation: 'completed'}));
@@ -160,6 +172,11 @@ const PBBWorkflowOrchestrator = () => {
           orgName
         );
         
+        // DEBUG LOGGING
+        console.log("📥 Program Scoring FULL Response:", scoringResponse);
+        console.log("📥 Program Scoring Response keys:", Object.keys(scoringResponse));
+        console.log("📥 Program Scoring Download URL field:", scoringResponse.download_url);
+        
         scoringData = scoringResponse.scoring_data;
         
         setAgentStatus(prev => ({...prev, programScoring: 'completed'}));
@@ -191,6 +208,11 @@ const PBBWorkflowOrchestrator = () => {
           scoringData,
           orgName
         );
+        
+        // DEBUG LOGGING
+        console.log("📥 Program Insight FULL Response:", insightResponse);
+        console.log("📥 Program Insight Response keys:", Object.keys(insightResponse));
+        console.log("📥 Program Insight Download URL field:", insightResponse.download_url);
         
         setAgentStatus(prev => ({...prev, programInsight: 'completed'}));
         setOutputFiles(prev => ({
@@ -228,6 +250,7 @@ const PBBWorkflowOrchestrator = () => {
     if (status === 'error') return <AlertCircle className="text-red-500" />;
     return null;
   };
+  
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
       <div className="mb-8">
