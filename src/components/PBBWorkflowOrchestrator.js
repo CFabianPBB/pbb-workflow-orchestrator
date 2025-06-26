@@ -76,16 +76,38 @@ const PBBWorkflowOrchestrator = () => {
 
   // Helper function to extract download URL from HTML response
   const extractDownloadUrl = (html, baseUrl) => {
-    // Look for download links in the HTML
-    const downloadLinkMatch = html.match(/href="([^"]*download[^"]*\.xlsx?)"/i);
-    if (downloadLinkMatch) {
-      const downloadPath = downloadLinkMatch[1];
-      // If it's a relative URL, make it absolute
-      if (downloadPath.startsWith('/')) {
-        return baseUrl + downloadPath;
+    console.log("🔍 Searching for download URL in HTML response...");
+    
+    // Multiple patterns to look for download links
+    const patterns = [
+      /href="([^"]*download[^"]*\.xlsx?)"/i,
+      /href="([^"]*\.xlsx?)"/i,
+      /href="([^"]*\/download\/[^"]*)"/i,
+      /window\.location\.href\s*=\s*["']([^"']*download[^"']*)["']/i,
+      /window\.location\.href\s*=\s*["']([^"']*\.xlsx?)["']/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match) {
+        let downloadPath = match[1];
+        console.log("✅ Found download path:", downloadPath);
+        
+        // If it's a relative URL, make it absolute
+        if (downloadPath.startsWith('/')) {
+          downloadPath = baseUrl + downloadPath;
+        } else if (!downloadPath.startsWith('http')) {
+          // Handle relative paths without leading slash
+          downloadPath = baseUrl + '/' + downloadPath;
+        }
+        
+        console.log("🔗 Final download URL:", downloadPath);
+        return downloadPath;
       }
-      return downloadPath;
     }
+    
+    // Debug: Log part of the HTML to see what we're working with
+    console.log("❌ No download URL found. HTML snippet:", html.substring(0, 1000));
     return null;
   };
   
@@ -119,42 +141,77 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Program Inventory App...");
       
       try {
-        // Create form data for Program Inventory
+        // Create form data for Program Inventory (matching the individual app's form)
         const inventoryFormData = new FormData();
-        inventoryFormData.append('file', files.personnel);
-        inventoryFormData.append('website_url', files.website || '');
+        inventoryFormData.append('file', files.personnel); // Main file upload
+        inventoryFormData.append('website_url', files.website || 'https://www.example.gov'); // Website URL
         inventoryFormData.append('programs_per_department', '5'); // Default value
         
         console.log("📤 Sending form data to:", appUrls.programInventory);
+        console.log("📋 Form data contents:");
+        console.log("  - File:", files.personnel.name);
+        console.log("  - Website:", files.website || 'https://www.example.gov');
+        console.log("  - Programs per dept: 5");
         
         // Submit to Program Inventory app
         const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
         const inventoryHtml = await inventoryResponse.text();
         
         console.log("📥 Program Inventory Response received");
+        console.log("📄 Response status:", inventoryResponse.status);
+        console.log("🔗 Response URL:", inventoryResponse.url);
         
-        // Extract download URL from response
-        const inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
+        // Check if we got redirected to a success page
+        if (inventoryResponse.url.includes('/task/') || inventoryResponse.url.includes('/download/')) {
+          console.log("✅ Looks like we got a task/download URL directly!");
+          // If the response URL itself is the download page, try to extract from that
+          if (inventoryResponse.url.includes('/download/')) {
+            const inventoryDownloadUrl = inventoryResponse.url;
+            console.log("🎯 Using response URL as download URL:", inventoryDownloadUrl);
         
-        if (inventoryDownloadUrl) {
-          console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
-          
-          // Download the file to pass to next step
-          const fileResponse = await fetch(inventoryDownloadUrl);
-          const blob = await fileResponse.blob();
-          inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-          
-          setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
-          setOutputFiles(prev => ({
-            ...prev, 
-            programInventory: {
-              name: 'program_inventory.xlsx',
-              downloadUrl: inventoryDownloadUrl
+            // Download the file to pass to next step
+            const fileResponse = await fetch(inventoryDownloadUrl);
+            if (!fileResponse.ok) {
+              throw new Error(`Failed to download file: ${fileResponse.status}`);
             }
-          }));
-        } else {
-          throw new Error("Could not find download URL in Program Inventory response");
-        }
+            const blob = await fileResponse.blob();
+            inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            
+            setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
+            setOutputFiles(prev => ({
+              ...prev, 
+              programInventory: {
+                name: 'program_inventory.xlsx',
+                downloadUrl: inventoryDownloadUrl
+              }
+            }));
+          } else {
+            // Try to extract download URL from HTML
+            const inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
+            
+            if (inventoryDownloadUrl) {
+              console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
+              
+              // Download the file to pass to next step
+              const fileResponse = await fetch(inventoryDownloadUrl);
+              if (!fileResponse.ok) {
+                throw new Error(`Failed to download file: ${fileResponse.status}`);
+              }
+              const blob = await fileResponse.blob();
+              inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+              
+              setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
+              setOutputFiles(prev => ({
+                ...prev, 
+                programInventory: {
+                  name: 'program_inventory.xlsx',
+                  downloadUrl: inventoryDownloadUrl
+                }
+              }));
+            } else {
+              throw new Error("Could not find download URL in Program Inventory response");
+            }
+          }
       } catch (error) {
         console.error("❌ Program Inventory Error:", error);
         setAgentStatus(prev => ({...prev, programInventory: 'error'}));
