@@ -57,8 +57,6 @@ const PBBWorkflowOrchestrator = () => {
   };
 
   const submitToApp = async (url, formData) => {
-    const proxyUrl = 'https://api.allorigins.win/raw?url=';
-    
     try {
       console.log("🔄 Trying direct POST to:", url);
       console.log("📋 FormData contents before sending:");
@@ -70,72 +68,39 @@ const PBBWorkflowOrchestrator = () => {
         }
       }
       
+      // Always try direct connection first - no proxy
       const response = await fetch(url, {
         method: 'POST',
         body: formData,
-        mode: 'no-cors' // Try no-cors mode to avoid CORS preflight
+        mode: 'cors',
+        credentials: 'omit',
+        redirect: 'follow'
       });
       
-      console.log("✅ Direct POST sent (no-cors mode)");
-      console.log("📥 Response status:", response.status);
-      console.log("📥 Response type:", response.type);
-      
-      // For no-cors, we can't read the response, so let's try a GET to check the result
-      if (response.type === 'opaque') {
-        console.log("🔄 Response is opaque, checking for task URL...");
-        // Try to get the task status page
-        const checkResponse = await fetch(url.replace(/\/$/, '') + '/task/latest', {
-          method: 'GET',
-          mode: 'cors'
-        });
-        
-        if (checkResponse.ok) {
-          console.log("✅ Found task status page");
-          return checkResponse;
-        }
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+      
+      console.log("✅ Direct POST successful");
+      console.log("📥 Response status:", response.status);
+      console.log("📥 Response URL:", response.url);
       
       return response;
     } catch (directError) {
-      console.log("⚠️ Direct POST failed, trying with CORS mode...", directError.message);
-      
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          body: formData,
-          mode: 'cors',
-          redirect: 'follow'
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        console.log("✅ Direct POST with CORS successful");
-        return response;
-      } catch (corsError) {
-        console.log("⚠️ CORS POST also failed, trying with proxy...", corsError.message);
-        console.log("⚠️ Warning: Proxy may strip file uploads!");
-        
-        const response = await fetch(`${proxyUrl}${url}`, {
-          method: 'POST',
-          body: formData,
-          redirect: 'follow'
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        console.log("✅ Proxy POST successful (but file may be missing)");
-        return response;
-      }
+      console.error("❌ Direct POST failed:", directError.message);
+      console.log("🚨 Cannot use proxy for file uploads - proxy strips files!");
+      throw new Error(`Direct connection required for file uploads. Error: ${directError.message}`);
     }
   };
 
   const waitForProcessingComplete = async (taskUrl, maxWaitTime = 120000) => {
     console.log("⏳ Waiting for background processing to complete...");
     console.log("🔗 Task URL:", taskUrl);
+    
+    // Ensure we're using the direct URL, not proxy URL
+    const cleanTaskUrl = taskUrl.replace('https://api.allorigins.win/raw?url=', '');
+    console.log("🔗 Clean Task URL:", cleanTaskUrl);
+    
     const startTime = Date.now();
     const pollInterval = 5000;
     let attempts = 0;
@@ -144,7 +109,11 @@ const PBBWorkflowOrchestrator = () => {
       attempts++;
       try {
         console.log(`🔄 Checking processing status (attempt ${attempts})...`);
-        const response = await fetch(taskUrl);
+        const response = await fetch(cleanTaskUrl, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit'
+        });
         const html = await response.text();
         
         console.log(`📊 Status check ${attempts}:`);
