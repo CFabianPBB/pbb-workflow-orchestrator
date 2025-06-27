@@ -80,39 +80,28 @@ const PBBWorkflowOrchestrator = () => {
     
     // Multiple patterns to look for download links - much more comprehensive
     const patterns = [
-      // Standard download links
-      /href="([^"]*download[^"]*\.xlsx?)"/gi,
-      /href="([^"]*\.xlsx[^"]*)"/gi,
-      /href="([^"]*\/download\/[^"]*)"/gi,
-      /href="([^"]*\/task\/[^"]*)"/gi,
-      /href="([^"]*\/file\/[^"]*)"/gi,
-      /href="([^"]*\/result\/[^"]*)"/gi,
-      /href="([^"]*\/output\/[^"]*)"/gi,
+      // Look for actual download URLs first (most specific)
+      /href="([^"]*\/download\/[^"]*\.xlsx?)"/gi,
+      /href="([^"]*\/file\/[^"]*\.xlsx?)"/gi,
+      /href="([^"]*\/result\/[^"]*\.xlsx?)"/gi,
+      /href="([^"]*\/output\/[^"]*\.xlsx?)"/gi,
+      /href="([^"]*\/task\/[^"]*\.xlsx?)"/gi,
       
-      // Any link with Excel file extension
-      /href="([^"]*\.xlsx?)"/gi,
-      /href="([^"]*\.xls[^"]*)"/gi,
+      // Look for any file with proper filename
+      /href="([^"]*[a-zA-Z0-9_-]+\.xlsx?)"/gi,
       
-      // JavaScript redirects
-      /window\.location\.href\s*=\s*["']([^"']*download[^"']*)["']/gi,
-      /window\.location\.href\s*=\s*["']([^"']*\.xlsx?[^"']*)["']/gi,
-      /window\.location\s*=\s*["']([^"']*download[^"']*)["']/gi,
-      /location\.href\s*=\s*["']([^"']*\.xlsx?[^"']*)["']/gi,
+      // JavaScript redirects to actual files
+      /window\.location\.href\s*=\s*["']([^"']*[a-zA-Z0-9_-]+\.xlsx?)["']/gi,
+      /location\.href\s*=\s*["']([^"']*[a-zA-Z0-9_-]+\.xlsx?)["']/gi,
       
-      // Meta refresh
-      /<meta[^>]*refresh[^>]*url=([^"']*download[^"']*)/gi,
-      /<meta[^>]*refresh[^>]*url=([^"']*\.xlsx?)/gi,
+      // Standard download links but avoid accept patterns
+      /href="([^"]*download[^"]*[a-zA-Z0-9_-]+\.xlsx?)"/gi,
       
-      // Action URLs from forms
-      /action="([^"]*download[^"]*)"/gi,
-      /action="([^"]*task[^"]*)"/gi,
-      /action="([^"]*result[^"]*)"/gi,
+      // Meta refresh to actual files
+      /<meta[^>]*refresh[^>]*url=([^"']*[a-zA-Z0-9_-]+\.xlsx?)/gi,
       
-      // Look for any URL that might be a file
-      /(?:href|src|action)="([^"]*(?:download|file|result|output|task)[^"]*(?:\.xlsx?)?[^"]*)"/gi,
-      
-      // Very broad pattern for any .xlsx file
-      /"([^"]*\.xlsx?[^"]*)"/gi,
+      // Action URLs from forms to actual files
+      /action="([^"]*[a-zA-Z0-9_-]+\.xlsx?)"/gi,
     ];
     
     console.log("🔍 Testing all patterns...");
@@ -128,8 +117,21 @@ const PBBWorkflowOrchestrator = () => {
     }
     
     if (allMatches.length > 0) {
-      // Take the first match that looks like a download
-      for (const match of allMatches) {
+      // Filter out obvious accept patterns and invalid URLs
+      const validMatches = allMatches.filter(match => {
+        const url = match.toLowerCase();
+        return !url.includes('accept=') && 
+               !url.includes('.xlsx,.xls') &&
+               !url.includes('.xls,.xlsx') &&
+               !url.startsWith('.') &&
+               url.includes('.xls') &&
+               (url.includes('/') || url.includes('http'));
+      });
+      
+      console.log("🔍 Valid download URLs after filtering:", validMatches);
+      
+      // Take the first valid match
+      for (const match of validMatches) {
         let downloadPath = match;
         console.log("🔍 Evaluating potential download path:", downloadPath);
         
