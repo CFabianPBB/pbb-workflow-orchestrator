@@ -141,124 +141,52 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Program Inventory App...");
       
       try {
-        // Create form data for Program Inventory (matching the individual app's form)
+        // Create form data for Program Inventory
         const inventoryFormData = new FormData();
-        inventoryFormData.append('file', files.personnel); // Main file upload
-        inventoryFormData.append('website_url', files.website || 'https://www.example.gov'); // Website URL
-        inventoryFormData.append('programs_per_department', '5'); // Default value
+        inventoryFormData.append('file', files.personnel);
+        inventoryFormData.append('website_url', files.website || 'https://www.example.gov');
+        inventoryFormData.append('programs_per_department', '5');
         
         console.log("📤 Sending form data to:", appUrls.programInventory);
-        console.log("📋 Form data contents:");
-        console.log("  - File:", files.personnel.name);
-        console.log("  - Website:", files.website || 'https://www.example.gov');
-        console.log("  - Programs per dept: 5");
         
         // Submit to Program Inventory app
         const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
         const inventoryHtml = await inventoryResponse.text();
         
         console.log("📥 Program Inventory Response received");
-        console.log("📄 Response status:", inventoryResponse.status);
         console.log("🔗 Response URL:", inventoryResponse.url);
         
-        // Check if we got redirected to a success page
-        if (inventoryResponse.url.includes('/task/') || inventoryResponse.url.includes('/download/')) {
-          console.log("✅ Looks like we got a task/download URL directly!");
-          // If the response URL itself is the download page, try to extract from that
-          if (inventoryResponse.url.includes('/download/')) {
-            const inventoryDownloadUrl = inventoryResponse.url;
-            console.log("🎯 Using response URL as download URL:", inventoryDownloadUrl);
-            
-            // Download the file to pass to next step
-            const fileResponse = await fetch(inventoryDownloadUrl);
-            if (!fileResponse.ok) {
-              throw new Error(`Failed to download file: ${fileResponse.status}`);
-            }
-            const blob = await fileResponse.blob();
-            inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            
-            setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
-            setOutputFiles(prev => ({
-              ...prev, 
-              programInventory: {
-                name: 'program_inventory.xlsx',
-                downloadUrl: inventoryDownloadUrl
-              }
-            }));
-          } else {
-            throw new Error("Got task URL but not download URL");
-          }
+        // Check if we got redirected to a download page
+        let inventoryDownloadUrl = null;
+        if (inventoryResponse.url.includes('/download/')) {
+          inventoryDownloadUrl = inventoryResponse.url;
+          console.log("✅ Using response URL as download URL:", inventoryDownloadUrl);
         } else {
-          // Try to extract download URL from HTML
-          const inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
-          
-          if (inventoryDownloadUrl) {
-            console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
-            
-            // Download the file to pass to next step
-            const fileResponse = await fetch(inventoryDownloadUrl);
-            if (!fileResponse.ok) {
-              throw new Error(`Failed to download file: ${fileResponse.status}`);
-            }
-            const blob = await fileResponse.blob();
-            inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            
-            setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
-            setOutputFiles(prev => ({
-              ...prev, 
-              programInventory: {
-                name: 'program_inventory.xlsx',
-                downloadUrl: inventoryDownloadUrl
-              }
-            }));
-          } else {
-            throw new Error("Could not find download URL in Program Inventory response");
-          }
+          inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
         }
         
-            // Download the file to pass to next step
-            const fileResponse = await fetch(inventoryDownloadUrl);
-            if (!fileResponse.ok) {
-              throw new Error(`Failed to download file: ${fileResponse.status}`);
-            }
-            const blob = await fileResponse.blob();
-            inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            
-            setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
-            setOutputFiles(prev => ({
-              ...prev, 
-              programInventory: {
-                name: 'program_inventory.xlsx',
-                downloadUrl: inventoryDownloadUrl
-              }
-            }));
-          } else {
-            // Try to extract download URL from HTML
-            const inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
-            
-            if (inventoryDownloadUrl) {
-              console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
-              
-              // Download the file to pass to next step
-              const fileResponse = await fetch(inventoryDownloadUrl);
-              if (!fileResponse.ok) {
-                throw new Error(`Failed to download file: ${fileResponse.status}`);
-              }
-              const blob = await fileResponse.blob();
-              inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-              
-              setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
-              setOutputFiles(prev => ({
-                ...prev, 
-                programInventory: {
-                  name: 'program_inventory.xlsx',
-                  downloadUrl: inventoryDownloadUrl
-                }
-              }));
-            } else {
-              throw new Error("Could not find download URL in Program Inventory response");
-            }
+        if (inventoryDownloadUrl) {
+          console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
+          
+          // Download the file to pass to next step
+          const fileResponse = await fetch(inventoryDownloadUrl);
+          if (!fileResponse.ok) {
+            throw new Error(`Failed to download file: ${fileResponse.status}`);
           }
+          const blob = await fileResponse.blob();
+          inventoryFile = new File([blob], 'program_inventory.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          
+          setAgentStatus(prev => ({...prev, programInventory: 'completed'}));
+          setOutputFiles(prev => ({
+            ...prev, 
+            programInventory: {
+              name: 'program_inventory.xlsx',
+              downloadUrl: inventoryDownloadUrl
+            }
+          }));
+        } else {
+          throw new Error("Could not find download URL in Program Inventory response");
+        }
       } catch (error) {
         console.error("❌ Program Inventory Error:", error);
         setAgentStatus(prev => ({...prev, programInventory: 'error'}));
@@ -289,13 +217,21 @@ const PBBWorkflowOrchestrator = () => {
         console.log("📥 Cost Allocation Response received");
         
         // Extract download URL from response
-        const costDownloadUrl = extractDownloadUrl(costHtml, appUrls.costAllocation);
+        let costDownloadUrl = null;
+        if (costResponse.url.includes('/download/')) {
+          costDownloadUrl = costResponse.url;
+        } else {
+          costDownloadUrl = extractDownloadUrl(costHtml, appUrls.costAllocation);
+        }
         
         if (costDownloadUrl) {
           console.log("✅ Cost Allocation Download URL found:", costDownloadUrl);
           
           // Download the file to pass to next step
           const fileResponse = await fetch(costDownloadUrl);
+          if (!fileResponse.ok) {
+            throw new Error(`Failed to download file: ${fileResponse.status}`);
+          }
           const blob = await fileResponse.blob();
           costingFile = new File([blob], 'program_costs.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
           
@@ -339,13 +275,21 @@ const PBBWorkflowOrchestrator = () => {
         console.log("📥 Program Scoring Response received");
         
         // Extract download URL from response
-        const scoringDownloadUrl = extractDownloadUrl(scoringHtml, appUrls.programScoring);
+        let scoringDownloadUrl = null;
+        if (scoringResponse.url.includes('/download/')) {
+          scoringDownloadUrl = scoringResponse.url;
+        } else {
+          scoringDownloadUrl = extractDownloadUrl(scoringHtml, appUrls.programScoring);
+        }
         
         if (scoringDownloadUrl) {
           console.log("✅ Program Scoring Download URL found:", scoringDownloadUrl);
           
           // Download the file to pass to next step
           const fileResponse = await fetch(scoringDownloadUrl);
+          if (!fileResponse.ok) {
+            throw new Error(`Failed to download file: ${fileResponse.status}`);
+          }
           const blob = await fileResponse.blob();
           scoringFile = new File([blob], 'program_scores.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
           
@@ -389,7 +333,12 @@ const PBBWorkflowOrchestrator = () => {
         console.log("📥 Program Insight Response received");
         
         // Extract download URL from response
-        const insightDownloadUrl = extractDownloadUrl(insightHtml, appUrls.programInsight);
+        let insightDownloadUrl = null;
+        if (insightResponse.url.includes('/download/')) {
+          insightDownloadUrl = insightResponse.url;
+        } else {
+          insightDownloadUrl = extractDownloadUrl(insightHtml, appUrls.programInsight);
+        }
         
         if (insightDownloadUrl) {
           console.log("✅ Program Insight Download URL found:", insightDownloadUrl);
@@ -548,7 +497,6 @@ const PBBWorkflowOrchestrator = () => {
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
-                    style={{ pointerEvents: 'auto' }}
                   >
                     <Download className="w-4 h-4 mr-1" />
                     Download Output
@@ -579,7 +527,6 @@ const PBBWorkflowOrchestrator = () => {
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
-                    style={{ pointerEvents: 'auto' }}
                   >
                     <Download className="w-4 h-4 mr-1" />
                     Download Output
@@ -610,7 +557,6 @@ const PBBWorkflowOrchestrator = () => {
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
-                    style={{ pointerEvents: 'auto' }}
                   >
                     <Download className="w-4 h-4 mr-1" />
                     Download Output
@@ -641,7 +587,6 @@ const PBBWorkflowOrchestrator = () => {
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="inline-flex items-center ml-4 px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 cursor-pointer"
-                    style={{ pointerEvents: 'auto' }}
                   >
                     <Download className="w-4 h-4 mr-1" />
                     Download Output
