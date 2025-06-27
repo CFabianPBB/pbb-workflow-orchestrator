@@ -162,19 +162,11 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Program Inventory App...");
       
       try {
-        // Create form data for Program Inventory (match exact field names)
+        // Create form data for Program Inventory (exact field names from HTML inspection)
         const inventoryFormData = new FormData();
-        
-        // Try different possible field names that your app might expect
         inventoryFormData.append('file', files.personnel);
-        inventoryFormData.append('excel_file', files.personnel); // Alternative name
-        inventoryFormData.append('personnel_file', files.personnel); // Alternative name
-        
-        inventoryFormData.append('website_url', files.website || 'https://www.example.gov');
-        inventoryFormData.append('organization_website_url', files.website || 'https://www.example.gov'); // Alternative
-        
+        inventoryFormData.append('website_url', files.website || '');
         inventoryFormData.append('programs_per_department', '5');
-        inventoryFormData.append('num_programs', '5'); // Alternative name
         
         console.log("📋 Form data being sent:");
         for (let [key, value] of inventoryFormData.entries()) {
