@@ -207,6 +207,20 @@ const PBBWorkflowOrchestrator = () => {
             console.log("📄 Full HTML length:", inventoryHtml.length);
             console.log("📄 HTML contains 'get-file':", inventoryHtml.includes('get-file'));
             console.log("📄 HTML contains 'download':", inventoryHtml.includes('download'));
+            console.log("📄 HTML contains 'success':", inventoryHtml.includes('success'));
+            console.log("📄 HTML contains 'generated':", inventoryHtml.includes('generated'));
+            console.log("📄 HTML contains 'Programs':", inventoryHtml.includes('Programs'));
+            console.log("📄 First 1000 chars of HTML:", inventoryHtml.substring(0, 1000));
+            console.log("📄 Last 500 chars of HTML:", inventoryHtml.substring(inventoryHtml.length - 500));
+            
+            // Look for any form or error messages
+            if (inventoryHtml.includes('error') || inventoryHtml.includes('Error')) {
+              console.log("⚠️ HTML contains error messages");
+            }
+            
+            if (inventoryHtml.includes('form') || inventoryHtml.includes('Form')) {
+              console.log("⚠️ HTML still contains form - might not have processed correctly");
+            }
             
             // Super aggressive search - look for ANY mention of get-file
             const allGetFileMatches = inventoryHtml.match(/get-file[^"'\s<>]*/gi);
