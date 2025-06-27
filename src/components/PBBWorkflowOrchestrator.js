@@ -78,9 +78,12 @@ const PBBWorkflowOrchestrator = () => {
   const extractDownloadUrl = (html, baseUrl) => {
     console.log("🔍 Searching for download URL in HTML response...");
     
-    // Multiple patterns to look for download links - much more comprehensive
+    // Multiple patterns to look for download links - now with the correct /get-file/ pattern
     const patterns = [
-      // Look for actual download URLs first (most specific)
+      // The actual pattern your app uses!
+      /href="([^"]*\/get-file\/[^"]*\.xlsx?)"/gi,
+      
+      // Other specific download patterns
       /href="([^"]*\/download\/[^"]*\.xlsx?)"/gi,
       /href="([^"]*\/file\/[^"]*\.xlsx?)"/gi,
       /href="([^"]*\/result\/[^"]*\.xlsx?)"/gi,
