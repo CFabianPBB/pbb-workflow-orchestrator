@@ -65,7 +65,7 @@ const PBBWorkflowOrchestrator = () => {
         method: 'POST',
         body: formData,
         mode: 'cors',
-        redirect: 'follow' // Follow redirects automatically
+        redirect: 'follow'
       });
       
       if (!response.ok) {
@@ -80,7 +80,7 @@ const PBBWorkflowOrchestrator = () => {
       const response = await fetch(`${proxyUrl}${url}`, {
         method: 'POST',
         body: formData,
-        redirect: 'follow' // Follow redirects automatically
+        redirect: 'follow'
       });
       
       if (!response.ok) {
@@ -92,12 +92,11 @@ const PBBWorkflowOrchestrator = () => {
     }
   };
 
-  // Helper function to wait for background processing to complete
   const waitForProcessingComplete = async (taskUrl, maxWaitTime = 120000) => {
     console.log("⏳ Waiting for background processing to complete...");
     console.log("🔗 Task URL:", taskUrl);
     const startTime = Date.now();
-    const pollInterval = 5000; // Poll every 5 seconds (longer interval)
+    const pollInterval = 5000;
     let attempts = 0;
     
     while (Date.now() - startTime < maxWaitTime) {
@@ -115,38 +114,32 @@ const PBBWorkflowOrchestrator = () => {
         console.log("  - Contains 'Error':", html.includes('Error'));
         console.log("  - Contains 'get-file':", html.includes('get-file'));
         
-        // Check if we've been redirected to the download page
         if (response.url.includes('/download/') || html.includes('Download Excel File')) {
           console.log("✅ Processing complete! Redirected to download page");
           return response;
         }
         
-        // Check if still processing
         if (html.includes('Processing Your File') || html.includes('Loading...') || html.includes('This may take several minutes')) {
           console.log(`⏳ Still processing (attempt ${attempts}), waiting ${pollInterval/1000} seconds...`);
           await new Promise(resolve => setTimeout(resolve, pollInterval));
           continue;
         }
         
-        // Check for errors in the processing
         if (html.includes('Error') || html.includes('error') || html.includes('flash')) {
           console.error("❌ Processing failed with an error");
           console.log("📄 Error page HTML (first 1000 chars):", html.substring(0, 1000));
           throw new Error("Processing failed - check the form data or file format");
         }
         
-        // If we're back to the original form, something went wrong
         if (html.includes('Upload Excel File') && html.includes('Organization Website URL')) {
           console.error("❌ Redirected back to the original form - processing failed");
           console.log("📄 Form page HTML (first 500 chars):", html.substring(0, 500));
           throw new Error("Processing failed - redirected back to the form");
         }
         
-        // Log unexpected responses
         console.log(`🤔 Unexpected response on attempt ${attempts}:`);
         console.log("📄 First 500 chars:", html.substring(0, 500));
         
-        // Continue waiting
         await new Promise(resolve => setTimeout(resolve, pollInterval));
         
       } catch (error) {
@@ -154,7 +147,6 @@ const PBBWorkflowOrchestrator = () => {
         if (attempts >= 3) {
           throw error;
         }
-        // Try again after a short delay
         await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
     }
@@ -247,16 +239,14 @@ const PBBWorkflowOrchestrator = () => {
       try {
         const inventoryFormData = new FormData();
         inventoryFormData.append('file', files.personnel);
-        inventoryFormData.append('department', orgName);
         inventoryFormData.append('website_url', files.website || '');
-        inventoryFormData.append('programs_count', '5');
+        inventoryFormData.append('programs_per_department', '5');
         
         console.log("📋 Form data being sent:");
         for (let [key, value] of inventoryFormData.entries()) {
           console.log(`  ${key}:`, value instanceof File ? value.name : value);
         }
         
-        // Submit to Program Inventory app with CORS fallback
         const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
         
         console.log("📥 Program Inventory Response received");
@@ -264,7 +254,6 @@ const PBBWorkflowOrchestrator = () => {
         
         let finalResponse = inventoryResponse;
         
-        // Check if we got redirected to a task processing page
         if (inventoryResponse.url.includes('/task/') || inventoryResponse.url.includes('processing')) {
           console.log("🔄 Detected background processing, waiting for completion...");
           finalResponse = await waitForProcessingComplete(inventoryResponse.url);
@@ -291,13 +280,9 @@ const PBBWorkflowOrchestrator = () => {
             console.log("📄 Full HTML length:", inventoryHtml.length);
             console.log("📄 HTML contains 'get-file':", inventoryHtml.includes('get-file'));
             console.log("📄 HTML contains 'download':", inventoryHtml.includes('download'));
-            console.log("📄 HTML contains 'success':", inventoryHtml.includes('success'));
-            console.log("📄 HTML contains 'generated':", inventoryHtml.includes('generated'));
-            console.log("📄 HTML contains 'Programs':", inventoryHtml.includes('Programs'));
             console.log("📄 First 1000 chars of HTML:", inventoryHtml.substring(0, 1000));
             console.log("📄 Last 500 chars of HTML:", inventoryHtml.substring(inventoryHtml.length - 500));
             
-            // Look for any form or error messages
             if (inventoryHtml.includes('error') || inventoryHtml.includes('Error')) {
               console.log("⚠️ HTML contains error messages");
             }
@@ -306,23 +291,12 @@ const PBBWorkflowOrchestrator = () => {
               console.log("⚠️ HTML still contains form - might not have processed correctly");
             }
             
-            // Super aggressive search - look for ANY mention of get-file
             const allGetFileMatches = inventoryHtml.match(/get-file[^"'\s<>]*/gi);
             console.log("🔍 All get-file matches:", allGetFileMatches);
             
-            // Look for href patterns with get-file
             const hrefMatches = inventoryHtml.match(/href="[^"]*get-file[^"]*"/gi);
             console.log("🔍 All href get-file matches:", hrefMatches);
             
-            // Look for the exact Bootstrap button pattern
-            const buttonMatches = inventoryHtml.match(/btn btn-primary btn-lg[^>]*>/gi);
-            console.log("🔍 Bootstrap button matches:", buttonMatches);
-            
-            // Try to find any .xlsx file references
-            const xlsxMatches = inventoryHtml.match(/[^"'\s<>]*\.xlsx[^"'\s<>]*/gi);
-            console.log("🔍 All .xlsx matches:", xlsxMatches);
-            
-            // Most aggressive - just look for anything that might be a download URL
             if (hrefMatches && hrefMatches.length > 0) {
               const firstHref = hrefMatches[0];
               const urlMatch = firstHref.match(/href="([^"]*)"/);
@@ -335,7 +309,6 @@ const PBBWorkflowOrchestrator = () => {
               }
             }
             
-            // If still nothing, try the simple get-file pattern
             if (!inventoryDownloadUrl && allGetFileMatches && allGetFileMatches.length > 0) {
               inventoryDownloadUrl = appUrls.programInventory.replace(/\/$/, '') + '/' + allGetFileMatches[0];
               console.log("✅ Constructed URL from get-file match:", inventoryDownloadUrl);
@@ -813,6 +786,7 @@ const PBBWorkflowOrchestrator = () => {
           </a>
           <a href={appUrls.programInsight} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center">
             <div className="h-6 w-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-500 mr-2">4</div>
+            Program Insights Predictor
           </a>
         </div>
       </div>
