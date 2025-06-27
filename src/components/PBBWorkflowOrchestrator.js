@@ -221,13 +221,31 @@ const PBBWorkflowOrchestrator = () => {
           console.log("⚠️ Response may contain errors. Full HTML:", inventoryHtml);
         }
         
-        // Check if we got redirected to a download page
+        // Check if we got redirected to a download page or if it's a get-file URL
         let inventoryDownloadUrl = null;
-        if (inventoryResponse.url.includes('/download/')) {
+        
+        console.log("🔍 Checking response URL for direct download:", inventoryResponse.url);
+        
+        if (inventoryResponse.url.includes('/download/') || 
+            inventoryResponse.url.includes('/get-file/') ||
+            inventoryResponse.url.includes('.xlsx') ||
+            inventoryResponse.url.includes('.xls')) {
           inventoryDownloadUrl = inventoryResponse.url;
           console.log("✅ Using response URL as download URL:", inventoryDownloadUrl);
         } else {
+          console.log("🔍 Response URL is not a direct download, searching HTML...");
           inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
+          
+          // If still no URL found, try a more aggressive search
+          if (!inventoryDownloadUrl) {
+            console.log("🔍 Trying aggressive URL search in HTML...");
+            // Look for any mention of get-file in the HTML
+            const getFileMatch = inventoryHtml.match(/\/get-file\/[^"'\s<>]+\.xlsx?/i);
+            if (getFileMatch) {
+              inventoryDownloadUrl = appUrls.programInventory + getFileMatch[0];
+              console.log("✅ Found get-file URL in HTML:", inventoryDownloadUrl);
+            }
+          }
         }
         
         if (inventoryDownloadUrl) {
