@@ -64,7 +64,8 @@ const PBBWorkflowOrchestrator = () => {
       const response = await fetch(url, {
         method: 'POST',
         body: formData,
-        mode: 'cors'
+        mode: 'cors',
+        redirect: 'follow' // Follow redirects automatically
       });
       
       if (!response.ok) {
@@ -78,7 +79,8 @@ const PBBWorkflowOrchestrator = () => {
       
       const response = await fetch(`${proxyUrl}${url}`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        redirect: 'follow' // Follow redirects automatically
       });
       
       if (!response.ok) {
@@ -88,6 +90,50 @@ const PBBWorkflowOrchestrator = () => {
       console.log("✅ Proxy POST successful");
       return response;
     }
+  };
+
+  // Helper function to wait for background processing to complete
+  const waitForProcessingComplete = async (taskUrl, maxWaitTime = 120000) => {
+    console.log("⏳ Waiting for background processing to complete...");
+    const startTime = Date.now();
+    const pollInterval = 3000; // Poll every 3 seconds
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        const response = await fetch(taskUrl);
+        const html = await response.text();
+        
+        console.log("🔄 Checking processing status...");
+        
+        // Check if we've been redirected to the download page
+        if (response.url.includes('/download/') || html.includes('Download Excel File')) {
+          console.log("✅ Processing complete! Redirected to download page");
+          return response;
+        }
+        
+        // Check if still processing
+        if (html.includes('Processing Your File') || html.includes('Loading...')) {
+          console.log("⏳ Still processing, waiting...");
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+          continue;
+        }
+        
+        // Check for errors
+        if (html.includes('Error') || html.includes('error')) {
+          throw new Error("Processing failed with an error");
+        }
+        
+        // If we get here, something unexpected happened
+        console.log("🤔 Unexpected response, continuing to wait...");
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+      } catch (error) {
+        console.error("❌ Error while waiting for processing:", error);
+        throw error;
+      }
+    }
+    
+    throw new Error("Processing timeout - took longer than expected");
   };
 
   const extractDownloadUrl = (html, baseUrl) => {
@@ -184,11 +230,23 @@ const PBBWorkflowOrchestrator = () => {
           console.log(`  ${key}:`, value instanceof File ? value.name : value);
         }
         
+        // Submit to Program Inventory app with CORS fallback
         const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
-        const inventoryHtml = await inventoryResponse.text();
         
         console.log("📥 Program Inventory Response received");
         console.log("🔗 Response URL:", inventoryResponse.url);
+        
+        let finalResponse = inventoryResponse;
+        
+        // Check if we got redirected to a task processing page
+        if (inventoryResponse.url.includes('/task/') || inventoryResponse.url.includes('processing')) {
+          console.log("🔄 Detected background processing, waiting for completion...");
+          finalResponse = await waitForProcessingComplete(inventoryResponse.url);
+        }
+        
+        const inventoryHtml = await finalResponse.text();
+        console.log("📄 Final response URL:", finalResponse.url);
+        console.log("📄 Final HTML length:", inventoryHtml.length);
         
         let inventoryDownloadUrl = null;
         
