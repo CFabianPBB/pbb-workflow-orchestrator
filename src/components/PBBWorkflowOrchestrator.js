@@ -80,18 +80,34 @@ const PBBWorkflowOrchestrator = () => {
     
     // Multiple patterns to look for download links
     const patterns = [
+      // Standard download links
       /href="([^"]*download[^"]*\.xlsx?)"/i,
       /href="([^"]*\.xlsx?)"/i,
       /href="([^"]*\/download\/[^"]*)"/i,
+      /href="([^"]*\/task\/[^"]*)"/i,
+      
+      // JavaScript redirects
       /window\.location\.href\s*=\s*["']([^"']*download[^"']*)["']/i,
-      /window\.location\.href\s*=\s*["']([^"']*\.xlsx?)["']/i
+      /window\.location\.href\s*=\s*["']([^"']*\.xlsx?)["']/i,
+      /window\.location\s*=\s*["']([^"']*download[^"']*)["']/i,
+      
+      // Meta refresh
+      /<meta[^>]*refresh[^>]*url=([^"']*download[^"']*)/i,
+      /<meta[^>]*refresh[^>]*url=([^"']*\.xlsx?)/i,
+      
+      // Action URLs from forms
+      /action="([^"]*download[^"]*)"/i,
+      /action="([^"]*task[^"]*)"/i,
     ];
     
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match) {
         let downloadPath = match[1];
-        console.log("✅ Found download path:", downloadPath);
+        console.log("✅ Found potential download path:", downloadPath);
+        
+        // Clean up the URL
+        downloadPath = downloadPath.replace(/&amp;/g, '&');
         
         // If it's a relative URL, make it absolute
         if (downloadPath.startsWith('/')) {
@@ -106,8 +122,13 @@ const PBBWorkflowOrchestrator = () => {
       }
     }
     
-    // Debug: Log part of the HTML to see what we're working with
-    console.log("❌ No download URL found. HTML snippet:", html.substring(0, 1000));
+    // Debug: Log more of the HTML to see what we're working with
+    console.log("❌ No download URL found.");
+    console.log("🔍 HTML content analysis:");
+    console.log("  - Contains 'download':", html.toLowerCase().includes('download'));
+    console.log("  - Contains '.xlsx':", html.toLowerCase().includes('.xlsx'));
+    console.log("  - Contains 'task':", html.toLowerCase().includes('task'));
+    console.log("  - HTML snippet:", html.substring(0, 1500));
     return null;
   };
   
@@ -141,11 +162,24 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Program Inventory App...");
       
       try {
-        // Create form data for Program Inventory
+        // Create form data for Program Inventory (match exact field names)
         const inventoryFormData = new FormData();
+        
+        // Try different possible field names that your app might expect
         inventoryFormData.append('file', files.personnel);
+        inventoryFormData.append('excel_file', files.personnel); // Alternative name
+        inventoryFormData.append('personnel_file', files.personnel); // Alternative name
+        
         inventoryFormData.append('website_url', files.website || 'https://www.example.gov');
+        inventoryFormData.append('organization_website_url', files.website || 'https://www.example.gov'); // Alternative
+        
         inventoryFormData.append('programs_per_department', '5');
+        inventoryFormData.append('num_programs', '5'); // Alternative name
+        
+        console.log("📋 Form data being sent:");
+        for (let [key, value] of inventoryFormData.entries()) {
+          console.log(`  ${key}:`, value instanceof File ? value.name : value);
+        }
         
         console.log("📤 Sending form data to:", appUrls.programInventory);
         
@@ -154,7 +188,14 @@ const PBBWorkflowOrchestrator = () => {
         const inventoryHtml = await inventoryResponse.text();
         
         console.log("📥 Program Inventory Response received");
+        console.log("📄 Response status:", inventoryResponse.status);
         console.log("🔗 Response URL:", inventoryResponse.url);
+        console.log("📝 Response HTML (first 500 chars):", inventoryHtml.substring(0, 500));
+        
+        // Check if the response contains error messages
+        if (inventoryHtml.includes('error') || inventoryHtml.includes('Error') || inventoryHtml.includes('invalid')) {
+          console.log("⚠️ Response may contain errors. Full HTML:", inventoryHtml);
+        }
         
         // Check if we got redirected to a download page
         let inventoryDownloadUrl = null;
