@@ -61,34 +61,75 @@ const PBBWorkflowOrchestrator = () => {
     
     try {
       console.log("🔄 Trying direct POST to:", url);
+      console.log("📋 FormData contents before sending:");
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
+        } else {
+          console.log(`  ${key}: ${value}`);
+        }
+      }
+      
       const response = await fetch(url, {
         method: 'POST',
         body: formData,
-        mode: 'cors',
-        redirect: 'follow'
+        mode: 'no-cors' // Try no-cors mode to avoid CORS preflight
       });
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      console.log("✅ Direct POST sent (no-cors mode)");
+      console.log("📥 Response status:", response.status);
+      console.log("📥 Response type:", response.type);
+      
+      // For no-cors, we can't read the response, so let's try a GET to check the result
+      if (response.type === 'opaque') {
+        console.log("🔄 Response is opaque, checking for task URL...");
+        // Try to get the task status page
+        const checkResponse = await fetch(url.replace(/\/$/, '') + '/task/latest', {
+          method: 'GET',
+          mode: 'cors'
+        });
+        
+        if (checkResponse.ok) {
+          console.log("✅ Found task status page");
+          return checkResponse;
+        }
       }
       
-      console.log("✅ Direct POST successful");
       return response;
     } catch (directError) {
-      console.log("⚠️ Direct POST failed, trying with proxy...", directError.message);
+      console.log("⚠️ Direct POST failed, trying with CORS mode...", directError.message);
       
-      const response = await fetch(`${proxyUrl}${url}`, {
-        method: 'POST',
-        body: formData,
-        redirect: 'follow'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          body: formData,
+          mode: 'cors',
+          redirect: 'follow'
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        console.log("✅ Direct POST with CORS successful");
+        return response;
+      } catch (corsError) {
+        console.log("⚠️ CORS POST also failed, trying with proxy...", corsError.message);
+        console.log("⚠️ Warning: Proxy may strip file uploads!");
+        
+        const response = await fetch(`${proxyUrl}${url}`, {
+          method: 'POST',
+          body: formData,
+          redirect: 'follow'
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        console.log("✅ Proxy POST successful (but file may be missing)");
+        return response;
       }
-      
-      console.log("✅ Proxy POST successful");
-      return response;
     }
   };
 
@@ -239,8 +280,15 @@ const PBBWorkflowOrchestrator = () => {
       try {
         const inventoryFormData = new FormData();
         inventoryFormData.append('file', files.personnel);
-        inventoryFormData.append('website_url', files.website || '');
+        inventoryFormData.append('website_url', files.website || 'https://www.tempe.gov/government/city-clerk-s-office');
         inventoryFormData.append('programs_per_department', '5');
+        
+        // Debug: Log file details
+        console.log("📁 File details:");
+        console.log("  - File name:", files.personnel.name);
+        console.log("  - File size:", files.personnel.size);
+        console.log("  - File type:", files.personnel.type);
+        console.log("  - Website URL:", files.website || 'https://www.tempe.gov/government/city-clerk-s-office');
         
         console.log("📋 Form data being sent:");
         for (let [key, value] of inventoryFormData.entries()) {
