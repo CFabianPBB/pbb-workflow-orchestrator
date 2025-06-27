@@ -95,15 +95,25 @@ const PBBWorkflowOrchestrator = () => {
   // Helper function to wait for background processing to complete
   const waitForProcessingComplete = async (taskUrl, maxWaitTime = 120000) => {
     console.log("⏳ Waiting for background processing to complete...");
+    console.log("🔗 Task URL:", taskUrl);
     const startTime = Date.now();
-    const pollInterval = 3000; // Poll every 3 seconds
+    const pollInterval = 5000; // Poll every 5 seconds (longer interval)
+    let attempts = 0;
     
     while (Date.now() - startTime < maxWaitTime) {
+      attempts++;
       try {
+        console.log(`🔄 Checking processing status (attempt ${attempts})...`);
         const response = await fetch(taskUrl);
         const html = await response.text();
         
-        console.log("🔄 Checking processing status...");
+        console.log(`📊 Status check ${attempts}:`);
+        console.log("  - Response URL:", response.url);
+        console.log("  - HTML length:", html.length);
+        console.log("  - Contains 'Processing':", html.includes('Processing'));
+        console.log("  - Contains 'Download Excel File':", html.includes('Download Excel File'));
+        console.log("  - Contains 'Error':", html.includes('Error'));
+        console.log("  - Contains 'get-file':", html.includes('get-file'));
         
         // Check if we've been redirected to the download page
         if (response.url.includes('/download/') || html.includes('Download Excel File')) {
@@ -112,28 +122,44 @@ const PBBWorkflowOrchestrator = () => {
         }
         
         // Check if still processing
-        if (html.includes('Processing Your File') || html.includes('Loading...')) {
-          console.log("⏳ Still processing, waiting...");
+        if (html.includes('Processing Your File') || html.includes('Loading...') || html.includes('This may take several minutes')) {
+          console.log(`⏳ Still processing (attempt ${attempts}), waiting ${pollInterval/1000} seconds...`);
           await new Promise(resolve => setTimeout(resolve, pollInterval));
           continue;
         }
         
-        // Check for errors
-        if (html.includes('Error') || html.includes('error')) {
-          throw new Error("Processing failed with an error");
+        // Check for errors in the processing
+        if (html.includes('Error') || html.includes('error') || html.includes('flash')) {
+          console.error("❌ Processing failed with an error");
+          console.log("📄 Error page HTML (first 1000 chars):", html.substring(0, 1000));
+          throw new Error("Processing failed - check the form data or file format");
         }
         
-        // If we get here, something unexpected happened
-        console.log("🤔 Unexpected response, continuing to wait...");
+        // If we're back to the original form, something went wrong
+        if (html.includes('Upload Excel File') && html.includes('Organization Website URL')) {
+          console.error("❌ Redirected back to the original form - processing failed");
+          console.log("📄 Form page HTML (first 500 chars):", html.substring(0, 500));
+          throw new Error("Processing failed - redirected back to the form");
+        }
+        
+        // Log unexpected responses
+        console.log(`🤔 Unexpected response on attempt ${attempts}:`);
+        console.log("📄 First 500 chars:", html.substring(0, 500));
+        
+        // Continue waiting
         await new Promise(resolve => setTimeout(resolve, pollInterval));
         
       } catch (error) {
-        console.error("❌ Error while waiting for processing:", error);
-        throw error;
+        console.error(`❌ Error while waiting for processing (attempt ${attempts}):`, error);
+        if (attempts >= 3) {
+          throw error;
+        }
+        // Try again after a short delay
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
     }
     
-    throw new Error("Processing timeout - took longer than expected");
+    throw new Error(`Processing timeout - took longer than ${maxWaitTime/1000} seconds`);
   };
 
   const extractDownloadUrl = (html, baseUrl) => {
