@@ -3,10 +3,8 @@ import { Upload, PlayCircle, CheckCircle, AlertCircle, Info, Download } from 'lu
 import config from '../config';
 
 const PBBWorkflowOrchestrator = () => {
-  // Get URLs from config
   const appUrls = config.apiUrls;
 
-  // State management
   const [orgName, setOrgName] = useState('');
   const [files, setFiles] = useState({
     personnel: null,
@@ -15,7 +13,7 @@ const PBBWorkflowOrchestrator = () => {
   });
   const [currentStep, setCurrentStep] = useState(0);
   const [agentStatus, setAgentStatus] = useState({
-    programInventory: 'idle', // idle, running, completed, error
+    programInventory: 'idle',
     costAllocation: 'idle',
     programScoring: 'idle',
     programInsight: 'idle'
@@ -34,7 +32,6 @@ const PBBWorkflowOrchestrator = () => {
     programInsight: ''
   });
   
-  // File upload handlers
   const handlePersonnelUpload = (e) => {
     if (e.target.files[0]) {
       setFiles({...files, personnel: e.target.files[0]});
@@ -55,54 +52,55 @@ const PBBWorkflowOrchestrator = () => {
     setOrgName(e.target.value);
   };
 
-  // Check if ready to start workflow
   const isReadyToStart = () => {
     return files.personnel && files.departmentBudget && orgName;
   };
 
-  // Helper function to submit form data to individual apps
   const submitToApp = async (url, formData) => {
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData
-    });
+    const proxyUrl = 'https://api.allorigins.win/raw?url=';
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+      console.log("🔄 Trying direct POST to:", url);
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        mode: 'cors'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      console.log("✅ Direct POST successful");
+      return response;
+    } catch (directError) {
+      console.log("⚠️ Direct POST failed, trying with proxy...", directError.message);
+      
+      const response = await fetch(`${proxyUrl}${url}`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      console.log("✅ Proxy POST successful");
+      return response;
     }
-    
-    return response;
   };
 
-  // Helper function to extract download URL from HTML response
   const extractDownloadUrl = (html, baseUrl) => {
     console.log("🔍 Searching for download URL in HTML response...");
     
-    // Multiple patterns to look for download links - targeting the exact Bootstrap button structure
     const patterns = [
-      // The exact pattern from your download.html template
       /href="([^"]*\/get-file\/[^"]*)"[^>]*class="btn btn-primary btn-lg"/gi,
       /href="([^"]*\/get-file\/[^"]*)"/gi,
-      
-      // Backup patterns for other structures
       /href="([^"]*\/download\/[^"]*\.xlsx?)"/gi,
       /href="([^"]*\/file\/[^"]*\.xlsx?)"/gi,
-      /href="([^"]*\/result\/[^"]*\.xlsx?)"/gi,
-      /href="([^"]*\/output\/[^"]*\.xlsx?)"/gi,
-      /href="([^"]*\/task\/[^"]*\.xlsx?)"/gi,
-      
-      // Look for any file with proper filename
       /href="([^"]*[a-zA-Z0-9_-]+\.xlsx?)"/gi,
-      
-      // JavaScript redirects to actual files
-      /window\.location\.href\s*=\s*["']([^"']*[a-zA-Z0-9_-]+\.xlsx?)["']/gi,
-      /location\.href\s*=\s*["']([^"']*[a-zA-Z0-9_-]+\.xlsx?)["']/gi,
-      
-      // Standard download links but avoid accept patterns
-      /href="([^"]*download[^"]*[a-zA-Z0-9_-]+\.xlsx?)"/gi,
     ];
     
-    console.log("🔍 Testing all patterns...");
     let allMatches = [];
     
     for (let i = 0; i < patterns.length; i++) {
@@ -115,7 +113,6 @@ const PBBWorkflowOrchestrator = () => {
     }
     
     if (allMatches.length > 0) {
-      // Filter out obvious accept patterns and invalid URLs
       const validMatches = allMatches.filter(match => {
         const url = match.toLowerCase();
         return !url.includes('accept=') && 
@@ -128,19 +125,15 @@ const PBBWorkflowOrchestrator = () => {
       
       console.log("🔍 Valid download URLs after filtering:", validMatches);
       
-      // Take the first valid match
       for (const match of validMatches) {
         let downloadPath = match;
         console.log("🔍 Evaluating potential download path:", downloadPath);
         
-        // Clean up the URL
         downloadPath = downloadPath.replace(/&amp;/g, '&');
         
-        // If it's a relative URL, make it absolute
         if (downloadPath.startsWith('/')) {
           downloadPath = baseUrl + downloadPath;
         } else if (!downloadPath.startsWith('http')) {
-          // Handle relative paths without leading slash
           downloadPath = baseUrl + '/' + downloadPath;
         }
         
@@ -149,22 +142,14 @@ const PBBWorkflowOrchestrator = () => {
       }
     }
     
-    // Debug: Log more of the HTML to see what we're working with
     console.log("❌ No download URL found.");
-    console.log("🔍 HTML content analysis:");
-    console.log("  - Contains 'download':", html.toLowerCase().includes('download'));
-    console.log("  - Contains '.xlsx':", html.toLowerCase().includes('.xlsx'));
-    console.log("  - Contains 'task':", html.toLowerCase().includes('task'));
-    console.log("  - HTML snippet:", html.substring(0, 1500));
     return null;
   };
   
-  // Run workflow
   const runWorkflow = async () => {
     if (!isReadyToStart()) return;
     
     setIsProcessing(true);
-    // Reset all statuses and errors
     setAgentStatus({
       programInventory: 'idle',
       costAllocation: 'idle',
@@ -178,7 +163,6 @@ const PBBWorkflowOrchestrator = () => {
       programInsight: ''
     });
     
-    // Store data for passing between steps
     let inventoryFile = null;
     let costingFile = null;
     let scoringFile = null;
@@ -189,37 +173,24 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Program Inventory App...");
       
       try {
-        // Create form data for Program Inventory (exact field names from HTML inspection)
         const inventoryFormData = new FormData();
         inventoryFormData.append('file', files.personnel);
+        inventoryFormData.append('department', orgName);
         inventoryFormData.append('website_url', files.website || '');
-        inventoryFormData.append('programs_per_department', '5');
+        inventoryFormData.append('programs_count', '5');
         
         console.log("📋 Form data being sent:");
         for (let [key, value] of inventoryFormData.entries()) {
           console.log(`  ${key}:`, value instanceof File ? value.name : value);
         }
         
-        console.log("📤 Sending form data to:", appUrls.programInventory);
-        
-        // Submit to Program Inventory app
         const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
         const inventoryHtml = await inventoryResponse.text();
         
         console.log("📥 Program Inventory Response received");
-        console.log("📄 Response status:", inventoryResponse.status);
         console.log("🔗 Response URL:", inventoryResponse.url);
-        console.log("📝 Response HTML (first 500 chars):", inventoryHtml.substring(0, 500));
         
-        // Check if the response contains error messages
-        if (inventoryHtml.includes('error') || inventoryHtml.includes('Error') || inventoryHtml.includes('invalid')) {
-          console.log("⚠️ Response may contain errors. Full HTML:", inventoryHtml);
-        }
-        
-        // Check if we got redirected to a download page or if it's a get-file URL
         let inventoryDownloadUrl = null;
-        
-        console.log("🔍 Checking response URL for direct download:", inventoryResponse.url);
         
         if (inventoryResponse.url.includes('/download/') || 
             inventoryResponse.url.includes('/get-file/') ||
@@ -228,19 +199,15 @@ const PBBWorkflowOrchestrator = () => {
           inventoryDownloadUrl = inventoryResponse.url;
           console.log("✅ Using response URL as download URL:", inventoryDownloadUrl);
         } else {
-          console.log("🔍 Response URL is not a direct download, searching HTML...");
           inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
           
-          // If still no URL found, try a more aggressive search
           if (!inventoryDownloadUrl) {
             console.log("🔍 Trying aggressive URL search in HTML...");
-            // Look for any mention of get-file in the HTML (even without .xlsx extension)
             const getFileMatch = inventoryHtml.match(/\/get-file\/[^"'\s<>]+/i);
             if (getFileMatch) {
               inventoryDownloadUrl = appUrls.programInventory + getFileMatch[0];
               console.log("✅ Found get-file URL in HTML:", inventoryDownloadUrl);
             } else {
-              // Even more aggressive - look for the Bootstrap button with get-file
               const buttonMatch = inventoryHtml.match(/href="([^"]*get-file[^"]*)"/i);
               if (buttonMatch) {
                 inventoryDownloadUrl = buttonMatch[1];
@@ -256,7 +223,6 @@ const PBBWorkflowOrchestrator = () => {
         if (inventoryDownloadUrl) {
           console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
           
-          // Download the file to pass to next step
           const fileResponse = await fetch(inventoryDownloadUrl);
           if (!fileResponse.ok) {
             throw new Error(`Failed to download file: ${fileResponse.status}`);
@@ -290,32 +256,36 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Cost Allocation App...");
       
       try {
-        // Create form data for Cost Allocation
         const costFormData = new FormData();
         costFormData.append('program_inventory', inventoryFile);
         costFormData.append('department_budget', files.departmentBudget);
         costFormData.append('organization_name', orgName);
         
-        console.log("📤 Sending form data to:", appUrls.costAllocation);
-        
-        // Submit to Cost Allocation app
         const costResponse = await submitToApp(appUrls.costAllocation, costFormData);
         const costHtml = await costResponse.text();
         
         console.log("📥 Cost Allocation Response received");
         
-        // Extract download URL from response
         let costDownloadUrl = null;
-        if (costResponse.url.includes('/download/')) {
+        if (costResponse.url.includes('/download/') || 
+            costResponse.url.includes('/get-file/') ||
+            costResponse.url.includes('.xlsx') ||
+            costResponse.url.includes('.xls')) {
           costDownloadUrl = costResponse.url;
         } else {
           costDownloadUrl = extractDownloadUrl(costHtml, appUrls.costAllocation);
+          
+          if (!costDownloadUrl) {
+            const getFileMatch = costHtml.match(/\/get-file\/[^"'\s<>]+/i);
+            if (getFileMatch) {
+              costDownloadUrl = appUrls.costAllocation + getFileMatch[0];
+            }
+          }
         }
         
         if (costDownloadUrl) {
           console.log("✅ Cost Allocation Download URL found:", costDownloadUrl);
           
-          // Download the file to pass to next step
           const fileResponse = await fetch(costDownloadUrl);
           if (!fileResponse.ok) {
             throw new Error(`Failed to download file: ${fileResponse.status}`);
@@ -349,31 +319,35 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Program Scoring App...");
       
       try {
-        // Create form data for Program Scoring
         const scoringFormData = new FormData();
         scoringFormData.append('file', costingFile);
         scoringFormData.append('organization_name', orgName);
         
-        console.log("📤 Sending form data to:", appUrls.programScoring);
-        
-        // Submit to Program Scoring app
         const scoringResponse = await submitToApp(appUrls.programScoring, scoringFormData);
         const scoringHtml = await scoringResponse.text();
         
         console.log("📥 Program Scoring Response received");
         
-        // Extract download URL from response
         let scoringDownloadUrl = null;
-        if (scoringResponse.url.includes('/download/')) {
+        if (scoringResponse.url.includes('/download/') || 
+            scoringResponse.url.includes('/get-file/') ||
+            scoringResponse.url.includes('.xlsx') ||
+            scoringResponse.url.includes('.xls')) {
           scoringDownloadUrl = scoringResponse.url;
         } else {
           scoringDownloadUrl = extractDownloadUrl(scoringHtml, appUrls.programScoring);
+          
+          if (!scoringDownloadUrl) {
+            const getFileMatch = scoringHtml.match(/\/get-file\/[^"'\s<>]+/i);
+            if (getFileMatch) {
+              scoringDownloadUrl = appUrls.programScoring + getFileMatch[0];
+            }
+          }
         }
         
         if (scoringDownloadUrl) {
           console.log("✅ Program Scoring Download URL found:", scoringDownloadUrl);
           
-          // Download the file to pass to next step
           const fileResponse = await fetch(scoringDownloadUrl);
           if (!fileResponse.ok) {
             throw new Error(`Failed to download file: ${fileResponse.status}`);
@@ -407,25 +381,30 @@ const PBBWorkflowOrchestrator = () => {
       console.log("🚀 Submitting to Program Insight App...");
       
       try {
-        // Create form data for Program Insight
         const insightFormData = new FormData();
         insightFormData.append('file', scoringFile);
         insightFormData.append('organization_name', orgName);
         
-        console.log("📤 Sending form data to:", appUrls.programInsight);
-        
-        // Submit to Program Insight app
         const insightResponse = await submitToApp(appUrls.programInsight, insightFormData);
         const insightHtml = await insightResponse.text();
         
         console.log("📥 Program Insight Response received");
         
-        // Extract download URL from response
         let insightDownloadUrl = null;
-        if (insightResponse.url.includes('/download/')) {
+        if (insightResponse.url.includes('/download/') || 
+            insightResponse.url.includes('/get-file/') ||
+            insightResponse.url.includes('.xlsx') ||
+            insightResponse.url.includes('.xls')) {
           insightDownloadUrl = insightResponse.url;
         } else {
           insightDownloadUrl = extractDownloadUrl(insightHtml, appUrls.programInsight);
+          
+          if (!insightDownloadUrl) {
+            const getFileMatch = insightHtml.match(/\/get-file\/[^"'\s<>]+/i);
+            if (getFileMatch) {
+              insightDownloadUrl = appUrls.programInsight + getFileMatch[0];
+            }
+          }
         }
         
         if (insightDownloadUrl) {
@@ -452,18 +431,16 @@ const PBBWorkflowOrchestrator = () => {
         throw new Error("Program Insight step failed");
       }
       
-      setCurrentStep(4); // All steps completed
+      setCurrentStep(4);
       console.log("🎉 All workflows completed successfully!");
       
     } catch (error) {
       console.error("❌ Workflow error:", error);
-      // Main error handling is done in each step
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Status icon component
   const StatusIcon = ({ status }) => {
     if (status === 'idle') return null;
     if (status === 'running') return <PlayCircle className="text-blue-500" />;
@@ -481,7 +458,6 @@ const PBBWorkflowOrchestrator = () => {
         </p>
       </div>
 
-      {/* Input Section */}
       <div className="mb-8 p-6 bg-gray-50 rounded-lg">
         <h2 className="text-xl font-semibold mb-4">Input Data</h2>
         
@@ -548,7 +524,6 @@ const PBBWorkflowOrchestrator = () => {
         </div>
       </div>
 
-      {/* Workflow Section */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold">Workflow Status</h2>
@@ -565,9 +540,7 @@ const PBBWorkflowOrchestrator = () => {
           </button>
         </div>
 
-        {/* Workflow Steps */}
         <div className="space-y-6">
-          {/* Step 1: Program Inventory Agent */}
           <div className="p-4 border rounded-lg bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
@@ -597,7 +570,6 @@ const PBBWorkflowOrchestrator = () => {
             )}
           </div>
 
-          {/* Step 2: Cost Allocation Agent */}
           <div className="p-4 border rounded-lg bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
@@ -627,7 +599,6 @@ const PBBWorkflowOrchestrator = () => {
             )}
           </div>
 
-          {/* Step 3: Program Scoring Agent */}
           <div className="p-4 border rounded-lg bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
@@ -657,7 +628,6 @@ const PBBWorkflowOrchestrator = () => {
             )}
           </div>
           
-          {/* Step 4: Program Insight Agent */}
           <div className="p-4 border rounded-lg bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
@@ -689,7 +659,6 @@ const PBBWorkflowOrchestrator = () => {
         </div>
       </div>
 
-      {/* Info Box */}
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex">
         <Info className="text-blue-500 mr-3 flex-shrink-0 mt-1" />
         <div>
@@ -704,7 +673,6 @@ const PBBWorkflowOrchestrator = () => {
         </div>
       </div>
       
-      {/* Links to Individual Apps */}
       <div className="mt-6 p-4 bg-gray-50 border rounded-lg">
         <h4 className="font-medium mb-3">Access Individual Applications</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -722,7 +690,6 @@ const PBBWorkflowOrchestrator = () => {
           </a>
           <a href={appUrls.programInsight} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center">
             <div className="h-6 w-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-500 mr-2">4</div>
-            Program Insights Predictor
           </a>
         </div>
       </div>
