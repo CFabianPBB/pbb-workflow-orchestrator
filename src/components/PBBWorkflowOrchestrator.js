@@ -78,12 +78,13 @@ const PBBWorkflowOrchestrator = () => {
   const extractDownloadUrl = (html, baseUrl) => {
     console.log("🔍 Searching for download URL in HTML response...");
     
-    // Multiple patterns to look for download links - now with the correct /get-file/ pattern
+    // Multiple patterns to look for download links - targeting the exact Bootstrap button structure
     const patterns = [
-      // The actual pattern your app uses!
-      /href="([^"]*\/get-file\/[^"]*\.xlsx?)"/gi,
+      // The exact pattern from your download.html template
+      /href="([^"]*\/get-file\/[^"]*)"[^>]*class="btn btn-primary btn-lg"/gi,
+      /href="([^"]*\/get-file\/[^"]*)"/gi,
       
-      // Other specific download patterns
+      // Backup patterns for other structures
       /href="([^"]*\/download\/[^"]*\.xlsx?)"/gi,
       /href="([^"]*\/file\/[^"]*\.xlsx?)"/gi,
       /href="([^"]*\/result\/[^"]*\.xlsx?)"/gi,
@@ -99,12 +100,6 @@ const PBBWorkflowOrchestrator = () => {
       
       // Standard download links but avoid accept patterns
       /href="([^"]*download[^"]*[a-zA-Z0-9_-]+\.xlsx?)"/gi,
-      
-      // Meta refresh to actual files
-      /<meta[^>]*refresh[^>]*url=([^"']*[a-zA-Z0-9_-]+\.xlsx?)/gi,
-      
-      // Action URLs from forms to actual files
-      /action="([^"]*[a-zA-Z0-9_-]+\.xlsx?)"/gi,
     ];
     
     console.log("🔍 Testing all patterns...");
@@ -239,11 +234,21 @@ const PBBWorkflowOrchestrator = () => {
           // If still no URL found, try a more aggressive search
           if (!inventoryDownloadUrl) {
             console.log("🔍 Trying aggressive URL search in HTML...");
-            // Look for any mention of get-file in the HTML
-            const getFileMatch = inventoryHtml.match(/\/get-file\/[^"'\s<>]+\.xlsx?/i);
+            // Look for any mention of get-file in the HTML (even without .xlsx extension)
+            const getFileMatch = inventoryHtml.match(/\/get-file\/[^"'\s<>]+/i);
             if (getFileMatch) {
               inventoryDownloadUrl = appUrls.programInventory + getFileMatch[0];
               console.log("✅ Found get-file URL in HTML:", inventoryDownloadUrl);
+            } else {
+              // Even more aggressive - look for the Bootstrap button with get-file
+              const buttonMatch = inventoryHtml.match(/href="([^"]*get-file[^"]*)"/i);
+              if (buttonMatch) {
+                inventoryDownloadUrl = buttonMatch[1];
+                if (inventoryDownloadUrl.startsWith('/')) {
+                  inventoryDownloadUrl = appUrls.programInventory + inventoryDownloadUrl;
+                }
+                console.log("✅ Found get-file URL in button:", inventoryDownloadUrl);
+              }
             }
           }
         }
