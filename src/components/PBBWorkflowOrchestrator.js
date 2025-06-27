@@ -199,23 +199,48 @@ const PBBWorkflowOrchestrator = () => {
           inventoryDownloadUrl = inventoryResponse.url;
           console.log("✅ Using response URL as download URL:", inventoryDownloadUrl);
         } else {
+          console.log("🔍 Response URL is not a direct download, searching HTML...");
           inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
           
           if (!inventoryDownloadUrl) {
             console.log("🔍 Trying aggressive URL search in HTML...");
-            const getFileMatch = inventoryHtml.match(/\/get-file\/[^"'\s<>]+/i);
-            if (getFileMatch) {
-              inventoryDownloadUrl = appUrls.programInventory + getFileMatch[0];
-              console.log("✅ Found get-file URL in HTML:", inventoryDownloadUrl);
-            } else {
-              const buttonMatch = inventoryHtml.match(/href="([^"]*get-file[^"]*)"/i);
-              if (buttonMatch) {
-                inventoryDownloadUrl = buttonMatch[1];
+            console.log("📄 Full HTML length:", inventoryHtml.length);
+            console.log("📄 HTML contains 'get-file':", inventoryHtml.includes('get-file'));
+            console.log("📄 HTML contains 'download':", inventoryHtml.includes('download'));
+            
+            // Super aggressive search - look for ANY mention of get-file
+            const allGetFileMatches = inventoryHtml.match(/get-file[^"'\s<>]*/gi);
+            console.log("🔍 All get-file matches:", allGetFileMatches);
+            
+            // Look for href patterns with get-file
+            const hrefMatches = inventoryHtml.match(/href="[^"]*get-file[^"]*"/gi);
+            console.log("🔍 All href get-file matches:", hrefMatches);
+            
+            // Look for the exact Bootstrap button pattern
+            const buttonMatches = inventoryHtml.match(/btn btn-primary btn-lg[^>]*>/gi);
+            console.log("🔍 Bootstrap button matches:", buttonMatches);
+            
+            // Try to find any .xlsx file references
+            const xlsxMatches = inventoryHtml.match(/[^"'\s<>]*\.xlsx[^"'\s<>]*/gi);
+            console.log("🔍 All .xlsx matches:", xlsxMatches);
+            
+            // Most aggressive - just look for anything that might be a download URL
+            if (hrefMatches && hrefMatches.length > 0) {
+              const firstHref = hrefMatches[0];
+              const urlMatch = firstHref.match(/href="([^"]*)"/);
+              if (urlMatch) {
+                inventoryDownloadUrl = urlMatch[1];
                 if (inventoryDownloadUrl.startsWith('/')) {
-                  inventoryDownloadUrl = appUrls.programInventory + inventoryDownloadUrl;
+                  inventoryDownloadUrl = appUrls.programInventory.replace(/\/$/, '') + inventoryDownloadUrl;
                 }
-                console.log("✅ Found get-file URL in button:", inventoryDownloadUrl);
+                console.log("✅ Found get-file URL from href:", inventoryDownloadUrl);
               }
+            }
+            
+            // If still nothing, try the simple get-file pattern
+            if (!inventoryDownloadUrl && allGetFileMatches && allGetFileMatches.length > 0) {
+              inventoryDownloadUrl = appUrls.programInventory.replace(/\/$/, '') + '/' + allGetFileMatches[0];
+              console.log("✅ Constructed URL from get-file match:", inventoryDownloadUrl);
             }
           }
         }
