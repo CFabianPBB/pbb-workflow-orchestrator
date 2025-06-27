@@ -282,12 +282,16 @@ const PBBWorkflowOrchestrator = () => {
         
         let inventoryDownloadUrl = null;
         
-        if (inventoryResponse.url.includes('/download/') || 
-            inventoryResponse.url.includes('/get-file/') ||
-            inventoryResponse.url.includes('.xlsx') ||
-            inventoryResponse.url.includes('.xls')) {
-          inventoryDownloadUrl = inventoryResponse.url;
-          console.log("✅ Using response URL as download URL:", inventoryDownloadUrl);
+        // Clean any proxy URLs from final response
+        let cleanFinalUrl = finalResponse.url.replace('https://api.allorigins.win/raw?url=', '');
+        console.log("🔗 Clean Final URL:", cleanFinalUrl);
+        
+        if (cleanFinalUrl.includes('/download/') || 
+            cleanFinalUrl.includes('/get-file/') ||
+            cleanFinalUrl.includes('.xlsx') ||
+            cleanFinalUrl.includes('.xls')) {
+          inventoryDownloadUrl = cleanFinalUrl;
+          console.log("✅ Using clean response URL as download URL:", inventoryDownloadUrl);
         } else {
           console.log("🔍 Response URL is not a direct download, searching HTML...");
           inventoryDownloadUrl = extractDownloadUrl(inventoryHtml, appUrls.programInventory);
