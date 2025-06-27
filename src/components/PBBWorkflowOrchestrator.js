@@ -96,18 +96,41 @@ const PBBWorkflowOrchestrator = () => {
       for (let [key, value] of formData.entries()) {
         if (value instanceof File) {
           console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
+          console.log(`    - Valid file: ${value.size > 0 ? 'YES' : 'NO'}`);
+          console.log(`    - File extension: ${value.name.split('.').pop()}`);
         } else {
-          console.log(`  ${key}: ${value}`);
+          console.log(`  ${key}: "${value}"`);
         }
       }
       
+      // Add debug headers to see what's happening
       const response = await fetch(url, {
         method: 'POST',
         body: formData,
         mode: 'cors',
-        credentials: 'include', // Include cookies for session
-        redirect: 'follow'
+        credentials: 'include',
+        redirect: 'follow',
+        headers: {
+          'X-Debug': 'orchestrator-request'  // Debug header to identify our requests
+        }
       });
+      
+      console.log("📥 Response details:");
+      console.log("  - Status:", response.status);
+      console.log("  - Status text:", response.statusText);
+      console.log("  - Response URL:", response.url);
+      console.log("  - Response headers:");
+      for (let [key, value] of response.headers.entries()) {
+        console.log(`    ${key}: ${value}`);
+      }
+      
+      // Check if this is a redirect vs original response
+      if (response.url !== url) {
+        console.log("🔄 Request was redirected from:", url);
+        console.log("🔄 Request redirected to:", response.url);
+      } else {
+        console.log("📍 No redirect - response from original URL");
+      }
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -155,7 +178,7 @@ const PBBWorkflowOrchestrator = () => {
         console.log("  - Contains 'Error':", html.includes('Error'));
         console.log("  - Contains 'get-file':", html.includes('get-file'));
         
-        if (response.url.includes('/download/') || html.includes('Download Excel File')) {
+        if (response.url.includes('/download/') || html.includes('Download Excel File') || html.includes('Programs Generated Successfully')) {
           console.log("✅ Processing complete! Redirected to download page");
           return response;
         }
@@ -317,10 +340,18 @@ const PBBWorkflowOrchestrator = () => {
         let cleanFinalUrl = finalResponse.url.replace('https://api.allorigins.win/raw?url=', '');
         console.log("🔗 Clean Final URL:", cleanFinalUrl);
         
-        if (cleanFinalUrl.includes('/download/') || 
-            cleanFinalUrl.includes('/get-file/') ||
-            cleanFinalUrl.includes('.xlsx') ||
-            cleanFinalUrl.includes('.xls')) {
+        if (cleanFinalUrl.includes('/download/')) {
+          // Extract filename from download URL
+          const downloadMatch = cleanFinalUrl.match(/\/download\/(.+)$/);
+          if (downloadMatch) {
+            const filename = downloadMatch[1];
+            inventoryDownloadUrl = appUrls.programInventory.replace(/\/$/, '') + '/get-file/' + filename;
+            console.log("✅ Extracted filename from download URL:", filename);
+            console.log("✅ Constructed get-file URL:", inventoryDownloadUrl);
+          }
+        } else if (cleanFinalUrl.includes('/get-file/') ||
+                   cleanFinalUrl.includes('.xlsx') ||
+                   cleanFinalUrl.includes('.xls')) {
           inventoryDownloadUrl = cleanFinalUrl;
           console.log("✅ Using clean response URL as download URL:", inventoryDownloadUrl);
         } else {
@@ -335,35 +366,30 @@ const PBBWorkflowOrchestrator = () => {
             console.log("📄 First 1000 chars of HTML:", inventoryHtml.substring(0, 1000));
             console.log("📄 Last 500 chars of HTML:", inventoryHtml.substring(inventoryHtml.length - 500));
             
-            if (inventoryHtml.includes('error') || inventoryHtml.includes('Error')) {
-              console.log("⚠️ HTML contains error messages");
-            }
+            // Look for download button with get-file URL
+            const getFileMatches = inventoryHtml.match(/href="([^"]*\/get-file\/[^"]*)"/gi);
+            console.log("🔍 All get-file href matches:", getFileMatches);
             
-            if (inventoryHtml.includes('form') || inventoryHtml.includes('Form')) {
-              console.log("⚠️ HTML still contains form - might not have processed correctly");
-            }
-            
-            const allGetFileMatches = inventoryHtml.match(/get-file[^"'\s<>]*/gi);
-            console.log("🔍 All get-file matches:", allGetFileMatches);
-            
-            const hrefMatches = inventoryHtml.match(/href="[^"]*get-file[^"]*"/gi);
-            console.log("🔍 All href get-file matches:", hrefMatches);
-            
-            if (hrefMatches && hrefMatches.length > 0) {
-              const firstHref = hrefMatches[0];
-              const urlMatch = firstHref.match(/href="([^"]*)"/);
+            if (getFileMatches && getFileMatches.length > 0) {
+              const firstMatch = getFileMatches[0];
+              const urlMatch = firstMatch.match(/href="([^"]*)"/);
               if (urlMatch) {
                 inventoryDownloadUrl = urlMatch[1];
                 if (inventoryDownloadUrl.startsWith('/')) {
                   inventoryDownloadUrl = appUrls.programInventory.replace(/\/$/, '') + inventoryDownloadUrl;
                 }
-                console.log("✅ Found get-file URL from href:", inventoryDownloadUrl);
+                console.log("✅ Found get-file URL from HTML:", inventoryDownloadUrl);
               }
             }
             
-            if (!inventoryDownloadUrl && allGetFileMatches && allGetFileMatches.length > 0) {
-              inventoryDownloadUrl = appUrls.programInventory.replace(/\/$/, '') + '/' + allGetFileMatches[0];
-              console.log("✅ Constructed URL from get-file match:", inventoryDownloadUrl);
+            // If still no URL, try to extract from download page URL
+            if (!inventoryDownloadUrl && cleanFinalUrl.includes('download')) {
+              const pathParts = cleanFinalUrl.split('/');
+              const lastPart = pathParts[pathParts.length - 1];
+              if (lastPart && (lastPart.includes('.xlsx') || lastPart.includes('.xls'))) {
+                inventoryDownloadUrl = appUrls.programInventory.replace(/\/$/, '') + '/get-file/' + lastPart;
+                console.log("✅ Constructed get-file URL from download path:", inventoryDownloadUrl);
+              }
             }
           }
         }
