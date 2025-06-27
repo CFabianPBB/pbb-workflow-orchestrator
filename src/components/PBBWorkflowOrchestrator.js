@@ -109,10 +109,7 @@ const PBBWorkflowOrchestrator = () => {
         body: formData,
         mode: 'cors',
         credentials: 'include',
-        redirect: 'follow',
-        headers: {
-          'X-Debug': 'orchestrator-request'  // Debug header to identify our requests
-        }
+        redirect: 'follow'
       });
       
       console.log("📥 Response details:");
