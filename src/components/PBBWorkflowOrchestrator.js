@@ -58,7 +58,40 @@ const PBBWorkflowOrchestrator = () => {
 
   const submitToApp = async (url, formData) => {
     try {
-      console.log("🔄 Trying direct POST to:", url);
+      console.log("🔄 Step 1: Getting the form page to check for CSRF tokens...");
+      
+      // First, get the form page to check for any CSRF tokens or hidden fields
+      const formPageResponse = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'include' // Include cookies for session
+      });
+      
+      if (formPageResponse.ok) {
+        const formPageHtml = await formPageResponse.text();
+        console.log("📄 Form page retrieved, checking for CSRF tokens...");
+        
+        // Look for CSRF tokens or hidden fields
+        const csrfMatches = formPageHtml.match(/<input[^>]*name="[^"]*csrf[^"]*"[^>]*value="([^"]*)"/i);
+        const hiddenInputs = formPageHtml.match(/<input[^>]*type="hidden"[^>]*>/gi) || [];
+        
+        if (csrfMatches) {
+          console.log("🔑 Found CSRF token, adding to form data");
+          formData.append(csrfMatches[0].match(/name="([^"]*)"/)[1], csrfMatches[1]);
+        }
+        
+        // Add any other hidden fields
+        hiddenInputs.forEach(input => {
+          const nameMatch = input.match(/name="([^"]*)"/);
+          const valueMatch = input.match(/value="([^"]*)"/);
+          if (nameMatch && valueMatch && nameMatch[1] !== 'file') {
+            console.log(`🔑 Adding hidden field: ${nameMatch[1]} = ${valueMatch[1]}`);
+            formData.append(nameMatch[1], valueMatch[1]);
+          }
+        });
+      }
+      
+      console.log("🔄 Step 2: Submitting form with all required fields...");
       console.log("📋 FormData contents before sending:");
       for (let [key, value] of formData.entries()) {
         if (value instanceof File) {
@@ -68,12 +101,11 @@ const PBBWorkflowOrchestrator = () => {
         }
       }
       
-      // Always try direct connection first - no proxy
       const response = await fetch(url, {
         method: 'POST',
         body: formData,
         mode: 'cors',
-        credentials: 'omit',
+        credentials: 'include', // Include cookies for session
         redirect: 'follow'
       });
       
@@ -81,15 +113,14 @@ const PBBWorkflowOrchestrator = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      console.log("✅ Direct POST successful");
+      console.log("✅ Form submission successful");
       console.log("📥 Response status:", response.status);
       console.log("📥 Response URL:", response.url);
       
       return response;
-    } catch (directError) {
-      console.error("❌ Direct POST failed:", directError.message);
-      console.log("🚨 Cannot use proxy for file uploads - proxy strips files!");
-      throw new Error(`Direct connection required for file uploads. Error: ${directError.message}`);
+    } catch (error) {
+      console.error("❌ Form submission failed:", error.message);
+      throw new Error(`Form submission failed. Error: ${error.message}`);
     }
   };
 
