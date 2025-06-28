@@ -93,14 +93,43 @@ const PBBWorkflowOrchestrator = () => {
       
       console.log("🔄 Step 2: Submitting form with all required fields...");
       console.log("📋 FormData contents before sending:");
+      let hasFile = false;
+      let hasWebsiteUrl = false;
+      let hasProgramsPerDept = false;
+      
       for (let [key, value] of formData.entries()) {
         if (value instanceof File) {
           console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
           console.log(`    - Valid file: ${value.size > 0 ? 'YES' : 'NO'}`);
           console.log(`    - File extension: ${value.name.split('.').pop()}`);
+          console.log(`    - Has filename: ${value.name ? 'YES' : 'NO'}`);
+          if (key === 'file' && value.name && value.size > 0) {
+            hasFile = true;
+          }
         } else {
           console.log(`  ${key}: "${value}"`);
+          if (key === 'website_url' && value.trim()) {
+            hasWebsiteUrl = true;
+          }
+          if (key === 'programs_per_department' && value) {
+            hasProgramsPerDept = true;
+          }
         }
+      }
+      
+      console.log("🔍 Validation check:");
+      console.log(`  - Has valid file: ${hasFile}`);
+      console.log(`  - Has website URL: ${hasWebsiteUrl}`);
+      console.log(`  - Has programs per department: ${hasProgramsPerDept}`);
+      
+      if (!hasFile) {
+        console.log("❌ FILE VALIDATION WILL FAIL - No valid file detected");
+      }
+      if (!hasWebsiteUrl) {
+        console.log("❌ URL VALIDATION WILL FAIL - No website URL detected");
+      }
+      if (!hasProgramsPerDept) {
+        console.log("❌ PROGRAMS VALIDATION WILL FAIL - No programs per department detected");
       }
       
       // Add debug headers to see what's happening
