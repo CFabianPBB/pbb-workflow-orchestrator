@@ -129,6 +129,43 @@ const PBBWorkflowOrchestrator = () => {
         console.log("📍 No redirect - response from original URL");
       }
       
+      // Try to find task ID in the response headers or content
+      const locationHeader = response.headers.get('location');
+      if (locationHeader) {
+        console.log("🔗 Location header found:", locationHeader);
+      }
+      
+      // Check if response looks like it has task info
+      const responseText = await response.text();
+      const taskUrlMatch = responseText.match(/\/task\/([a-zA-Z0-9-]+)/);
+      if (taskUrlMatch) {
+        console.log("🎯 Found task ID in response:", taskUrlMatch[1]);
+        console.log("🔗 Task URL would be:", url.replace(/\/$/, '') + taskUrlMatch[0]);
+        
+        // Create a new response-like object with the task URL
+        const taskUrl = url.replace(/\/$/, '') + taskUrlMatch[0];
+        const taskResponse = await fetch(taskUrl, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'include'
+        });
+        
+        if (taskResponse.ok) {
+          console.log("✅ Successfully accessed task page");
+          return taskResponse;
+        }
+      }
+      
+      // If no task found, return original response but recreate it since we consumed the text
+      const newResponse = new Response(responseText, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        url: response.url
+      });
+      
+      return newResponse;
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
