@@ -64,7 +64,7 @@ const PBBWorkflowOrchestrator = () => {
       const formPageResponse = await fetch(url, {
         method: 'GET',
         mode: 'cors',
-        credentials: 'include' // Include cookies for session
+        credentials: 'include'
       });
       
       if (formPageResponse.ok) {
@@ -91,7 +91,7 @@ const PBBWorkflowOrchestrator = () => {
         });
       }
       
-      console.log("🔄 Step 2: Submitting form with all required fields...");
+      console.log("🔄 Step 2: Submitting form with direct connection (no proxy)...");
       console.log("📋 FormData contents before sending:");
       let hasFile = false;
       let hasWebsiteUrl = false;
@@ -132,111 +132,66 @@ const PBBWorkflowOrchestrator = () => {
         console.log("❌ PROGRAMS VALIDATION WILL FAIL - No programs per department detected");
       }
       
-      // Add debug headers to see what's happening
-      const response = await fetch(url, {
-        method: 'POST',
-        body: formData,
-        mode: 'cors',
-        credentials: 'include',
-        redirect: 'manual' // Don't auto-follow redirects
-      });
-      
-      console.log("📥 Response details:");
-      console.log("  - Status:", response.status);
-      console.log("  - Status text:", response.statusText);
-      console.log("  - Response URL:", response.url);
-      
-      // Handle redirects manually
-      if (response.status === 302 || response.status === 301) {
-        const locationHeader = response.headers.get('location');
-        console.log("🔄 Redirect detected! Location:", locationHeader);
-        
-        if (locationHeader) {
-          let redirectUrl = locationHeader;
-          // Make sure it's a full URL
-          if (redirectUrl.startsWith('/')) {
-            redirectUrl = url.replace(/\/$/, '') + redirectUrl;
-          }
-          console.log("🔄 Following redirect to:", redirectUrl);
-          
-          // Follow the redirect manually
-          const redirectResponse = await fetch(redirectUrl, {
-            method: 'GET',
-            mode: 'cors',
-            credentials: 'include'
-          });
-          
-          console.log("✅ Redirect followed successfully");
-          console.log("📥 Final response URL:", redirectResponse.url);
-          return redirectResponse;
-        }
-      }
-      
-      console.log("📥 Response details:");
-      console.log("  - Status:", response.status);
-      console.log("  - Status text:", response.statusText);
-      console.log("  - Response URL:", response.url);
-      console.log("  - Response headers:");
-      for (let [key, value] of response.headers.entries()) {
-        console.log(`    ${key}: ${value}`);
-      }
-      
-      // Check if this is a redirect vs original response
-      if (response.url !== url) {
-        console.log("🔄 Request was redirected from:", url);
-        console.log("🔄 Request redirected to:", response.url);
-      } else {
-        console.log("📍 No redirect - response from original URL");
-        console.log("⚠️  This usually indicates a server error during form processing");
-        console.log("⚠️  Check if required environment variables (like OPENAI_API_KEY) are set");
-      }
-      
-      // Try to find task ID in the response headers or content
-      const locationHeader = response.headers.get('location');
-      if (locationHeader) {
-        console.log("🔗 Location header found:", locationHeader);
-      }
-      
-      // Check if response looks like it has task info
-      const responseText = await response.text();
-      const taskUrlMatch = responseText.match(/\/task\/([a-zA-Z0-9-]+)/);
-      if (taskUrlMatch) {
-        console.log("🎯 Found task ID in response:", taskUrlMatch[1]);
-        console.log("🔗 Task URL would be:", url.replace(/\/$/, '') + taskUrlMatch[0]);
-        
-        // Create a new response-like object with the task URL
-        const taskUrl = url.replace(/\/$/, '') + taskUrlMatch[0];
-        const taskResponse = await fetch(taskUrl, {
-          method: 'GET',
+      // Try direct connection first (both apps are on Render, should work)
+      try {
+        console.log("🚀 Attempting direct connection to Render app...");
+        const response = await fetch(url, {
+          method: 'POST',
+          body: formData,
           mode: 'cors',
-          credentials: 'include'
+          credentials: 'include',
+          redirect: 'manual'
         });
         
-        if (taskResponse.ok) {
-          console.log("✅ Successfully accessed task page");
-          return taskResponse;
+        console.log("📥 Direct response details:");
+        console.log("  - Status:", response.status);
+        console.log("  - Status text:", response.statusText);
+        console.log("  - Response URL:", response.url);
+        
+        // Handle redirects manually
+        if (response.status === 302 || response.status === 301) {
+          const locationHeader = response.headers.get('location');
+          console.log("🔄 Direct redirect detected! Location:", locationHeader);
+          
+          if (locationHeader) {
+            let redirectUrl = locationHeader;
+            if (redirectUrl.startsWith('/')) {
+              redirectUrl = url.replace(/\/$/, '') + redirectUrl;
+            }
+            console.log("🔄 Following direct redirect to:", redirectUrl);
+            
+            const redirectResponse = await fetch(redirectUrl, {
+              method: 'GET',
+              mode: 'cors',
+              credentials: 'include'
+            });
+            
+            console.log("✅ Direct redirect followed successfully");
+            return redirectResponse;
+          }
         }
+        
+        console.log("✅ Direct connection successful");
+        return response;
+        
+      } catch (directError) {
+        console.log("⚠️ Direct connection failed:", directError.message);
+        console.log("🔄 Falling back to proxy method...");
+        
+        // Fallback to proxy method
+        const proxyUrl = 'https://api.allorigins.win/raw?url=';
+        const proxyResponse = await fetch(`${proxyUrl}${url}`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        console.log("📥 Proxy response details:");
+        console.log("  - Status:", proxyResponse.status);
+        console.log("  - Response URL:", proxyResponse.url);
+        
+        return proxyResponse;
       }
       
-      // If no task found, return original response but recreate it since we consumed the text
-      const newResponse = new Response(responseText, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-        url: response.url
-      });
-      
-      return newResponse;
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      console.log("✅ Form submission successful");
-      console.log("📥 Response status:", response.status);
-      console.log("📥 Response URL:", response.url);
-      
-      return response;
     } catch (error) {
       console.error("❌ Form submission failed:", error.message);
       throw new Error(`Form submission failed. Error: ${error.message}`);
@@ -402,7 +357,6 @@ const PBBWorkflowOrchestrator = () => {
         inventoryFormData.append('website_url', files.website || 'https://www.tempe.gov/government/city-clerk-s-office');
         inventoryFormData.append('programs_per_department', '5');
         
-        // Debug: Log file details
         console.log("📁 File details:");
         console.log("  - File name:", files.personnel.name);
         console.log("  - File size:", files.personnel.size);
@@ -421,9 +375,33 @@ const PBBWorkflowOrchestrator = () => {
         
         let finalResponse = inventoryResponse;
         
-        if (inventoryResponse.url.includes('/task/') || inventoryResponse.url.includes('processing')) {
+        // Clean any proxy URLs from initial response
+        let cleanResponseUrl = inventoryResponse.url.replace('https://api.allorigins.win/raw?url=', '');
+        console.log("🔗 Clean Response URL:", cleanResponseUrl);
+        
+        // Check if we got redirected to a task processing page
+        if (cleanResponseUrl.includes('/task/')) {
           console.log("🔄 Detected background processing, waiting for completion...");
-          finalResponse = await waitForProcessingComplete(inventoryResponse.url);
+          finalResponse = await waitForProcessingComplete(cleanResponseUrl);
+        } else {
+          // If not redirected to task page, check if the response contains task information
+          const inventoryHtml = await inventoryResponse.text();
+          const taskUrlMatch = inventoryHtml.match(/\/task\/([a-zA-Z0-9-]+)/);
+          if (taskUrlMatch) {
+            const taskUrl = appUrls.programInventory.replace(/\/$/, '') + taskUrlMatch[0];
+            console.log("🎯 Found task URL in response content:", taskUrl);
+            console.log("🔄 Detected background processing, waiting for completion...");
+            finalResponse = await waitForProcessingComplete(taskUrl);
+          } else {
+            console.log("📍 No task URL found, treating as direct response");
+            // Recreate response since we consumed the text
+            finalResponse = new Response(inventoryHtml, {
+              status: inventoryResponse.status,
+              statusText: inventoryResponse.statusText,
+              headers: inventoryResponse.headers,
+              url: inventoryResponse.url
+            });
+          }
         }
         
         const inventoryHtml = await finalResponse.text();
