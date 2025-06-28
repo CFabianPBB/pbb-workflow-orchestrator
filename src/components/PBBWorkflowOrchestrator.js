@@ -156,6 +156,8 @@ const PBBWorkflowOrchestrator = () => {
         console.log("🔄 Request redirected to:", response.url);
       } else {
         console.log("📍 No redirect - response from original URL");
+        console.log("⚠️  This usually indicates a server error during form processing");
+        console.log("⚠️  Check if required environment variables (like OPENAI_API_KEY) are set");
       }
       
       // Try to find task ID in the response headers or content
