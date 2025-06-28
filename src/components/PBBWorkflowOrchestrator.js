@@ -138,8 +138,39 @@ const PBBWorkflowOrchestrator = () => {
         body: formData,
         mode: 'cors',
         credentials: 'include',
-        redirect: 'follow'
+        redirect: 'manual' // Don't auto-follow redirects
       });
+      
+      console.log("📥 Response details:");
+      console.log("  - Status:", response.status);
+      console.log("  - Status text:", response.statusText);
+      console.log("  - Response URL:", response.url);
+      
+      // Handle redirects manually
+      if (response.status === 302 || response.status === 301) {
+        const locationHeader = response.headers.get('location');
+        console.log("🔄 Redirect detected! Location:", locationHeader);
+        
+        if (locationHeader) {
+          let redirectUrl = locationHeader;
+          // Make sure it's a full URL
+          if (redirectUrl.startsWith('/')) {
+            redirectUrl = url.replace(/\/$/, '') + redirectUrl;
+          }
+          console.log("🔄 Following redirect to:", redirectUrl);
+          
+          // Follow the redirect manually
+          const redirectResponse = await fetch(redirectUrl, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'include'
+          });
+          
+          console.log("✅ Redirect followed successfully");
+          console.log("📥 Final response URL:", redirectResponse.url);
+          return redirectResponse;
+        }
+      }
       
       console.log("📥 Response details:");
       console.log("  - Status:", response.status);
