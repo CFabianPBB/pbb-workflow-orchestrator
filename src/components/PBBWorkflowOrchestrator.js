@@ -148,7 +148,7 @@ const PBBWorkflowOrchestrator = () => {
     }
   };
 
-  const waitForProcessingComplete = async (taskUrl, maxWaitTime = 120000) => {
+  const waitForProcessingComplete = async (taskUrl, maxWaitTime = 300000) => { // 5 minutes default
     console.log("⏳ Waiting for background processing to complete...");
     console.log("🔗 Task URL:", taskUrl);
     
@@ -252,42 +252,63 @@ const PBBWorkflowOrchestrator = () => {
         const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
         
         console.log("📥 Program Inventory Response received");
+        console.log("📥 Response status:", inventoryResponse.status);
+        console.log("📥 Response URL:", inventoryResponse.url);
         
         // Clean any proxy URLs from initial response
         let cleanResponseUrl = inventoryResponse.url.replace('https://api.allorigins.win/raw?url=', '');
         console.log("🔗 Clean Response URL:", cleanResponseUrl);
         
-        // Check if this is a redirect vs original response
-        if (inventoryResponse.url !== appUrls.programInventory) {
-          console.log("🔄 Request was redirected from:", appUrls.programInventory);
-          console.log("🔄 Request redirected to:", inventoryResponse.url);
-        } else {
-          console.log("❌ No redirect - response from original URL");
-          console.log("⚠️ Check if required environment variables (like OPENAI_API_KEY) are set");
+        // Check response headers for location
+        const locationHeader = inventoryResponse.headers.get('location');
+        if (locationHeader) {
+          console.log("🔗 Location header found:", locationHeader);
         }
         
         const responseText = await inventoryResponse.text();
+        console.log("📄 Response content preview:", responseText.substring(0, 300));
         
-        // Look for task URL in the response content if no redirect occurred
-        const taskUrlMatch = responseText.match(/\/task\/([a-f0-9\-]+)/);
-        if (taskUrlMatch) {
-          const taskId = taskUrlMatch[1];
-          const baseUrl = new URL(appUrls.programInventory).origin;
-          const taskUrl = `${baseUrl}/task/${taskId}`;
-          console.log("🎯 Found task ID in response:", taskId);
-          console.log("🔗 Task URL would be:", taskUrl);
+        // Look for task URL in multiple ways
+        let taskUrl = null;
+        
+        // Method 1: Check if we're already on a task page
+        if (cleanResponseUrl.includes('/task/')) {
+          taskUrl = cleanResponseUrl;
+          console.log("✅ Method 1: Already on task page:", taskUrl);
+        }
+        
+        // Method 2: Look for task ID in response content
+        if (!taskUrl) {
+          const taskUrlMatch = responseText.match(/\/task\/([a-f0-9\-]+)/);
+          if (taskUrlMatch) {
+            const baseUrl = new URL(appUrls.programInventory).origin;
+            taskUrl = `${baseUrl}${taskUrlMatch[0]}`;
+            console.log("✅ Method 2: Found task URL in content:", taskUrl);
+          }
+        }
+        
+        // Method 3: Look for meta refresh or JavaScript redirect
+        if (!taskUrl) {
+          const metaRefreshMatch = responseText.match(/url=([^"'>\s]+task\/[^"'>\s]+)/);
+          if (metaRefreshMatch) {
+            taskUrl = metaRefreshMatch[1];
+            if (taskUrl.startsWith('/')) {
+              const baseUrl = new URL(appUrls.programInventory).origin;
+              taskUrl = baseUrl + taskUrl;
+            }
+            console.log("✅ Method 3: Found task URL in meta refresh:", taskUrl);
+          }
+        }
+
+        let inventoryDownloadUrl = null;
+
+        // If we found a task URL, use it for polling
+        if (taskUrl) {
+          console.log("🎯 Using task URL for polling:", taskUrl);
           
-          // Try to access the task page directly
           try {
-            const taskResponse = await fetch(taskUrl, {
-              method: 'GET',
-              mode: 'cors',
-              credentials: 'include'
-            });
-            console.log("✅ Successfully accessed task page");
-            
-            // Wait for processing to complete
-            const finalResponse = await waitForProcessingComplete(taskUrl);
+            // Wait for processing to complete using the correct task URL
+            const finalResponse = await waitForProcessingComplete(taskUrl, 300000); // 5 minutes
             
             // Clean any proxy URLs from final response
             let cleanFinalUrl = finalResponse.url.replace('https://api.allorigins.win/raw?url=', '');
@@ -312,100 +333,103 @@ const PBBWorkflowOrchestrator = () => {
             }
             
           } catch (taskError) {
-            console.log("❌ Could not access task page:", taskError.message);
-          }
-        }
-        
-        // Check if we reached the download page directly
-        let inventoryDownloadUrl = null;
-        
-        if (cleanResponseUrl.includes('/download/') || responseText.includes('Download Excel File') || responseText.includes('Programs Generated Successfully')) {
-          console.log("✅ Processing complete! Redirected to download page");
-          
-          if (cleanResponseUrl.includes('/download/')) {
-            // Extract filename from download URL
-            const filenameMatch = cleanResponseUrl.match(/\/download\/(.+)$/);
-            if (filenameMatch) {
-              const filename = filenameMatch[1];
-              console.log("✅ Extracted filename from download URL:", filename);
-              
-              // Construct the get-file URL
-              const baseUrl = new URL(cleanResponseUrl).origin;
-              const getFileUrl = `${baseUrl}/get-file/${filename}`;
-              console.log("✅ Constructed get-file URL:", getFileUrl);
-              
-              inventoryDownloadUrl = getFileUrl;
-            }
-          } else {
-            // Try to extract download URL from HTML content
-            const downloadUrlMatch = responseText.match(/href="([^"]*get-file[^"]*\.xlsx)"/);
-            if (downloadUrlMatch) {
-              let extractedUrl = downloadUrlMatch[1];
-              if (extractedUrl.startsWith('/')) {
-                const baseUrl = new URL(cleanResponseUrl).origin;
-                extractedUrl = baseUrl + extractedUrl;
-              }
-              console.log("✅ Extracted download URL from HTML:", extractedUrl);
-              inventoryDownloadUrl = extractedUrl;
-            }
-          }
-          
-          if (!inventoryDownloadUrl) {
-            console.log("🔗 Using clean response URL as download URL:", cleanResponseUrl);
-            inventoryDownloadUrl = cleanResponseUrl;
+            console.log("❌ Could not process using task URL:", taskError.message);
+            updateAgentStatus('programInventory', 'error');
+            addLog(`❌ Program Inventory Agent failed: Could not access task page`);
+            return;
           }
         } else {
-          // Wait for background processing to complete
-          console.log("🔄 Detected background processing, waiting for completion...");
+          console.log("⚠️ No task URL found, checking if already completed...");
           
-          const finalResponse = await waitForProcessingComplete(cleanResponseUrl);
-          
-          // Clean any proxy URLs from final response
-          let cleanFinalUrl = finalResponse.url.replace('https://api.allorigins.win/raw?url=', '');
-          console.log("🔗 Clean Final URL:", cleanFinalUrl);
-          
-          if (cleanFinalUrl.includes('/download/')) {
-            console.log("✅ Processing complete! Redirected to download page");
+          // Check if we reached the download page directly
+          if (cleanResponseUrl.includes('/download/') || responseText.includes('Download Excel File') || responseText.includes('Programs Generated Successfully')) {
+            console.log("✅ Processing completed immediately!");
             
-            // Extract filename from download URL
-            const filenameMatch = cleanFinalUrl.match(/\/download\/(.+)$/);
-            if (filenameMatch) {
-              const filename = filenameMatch[1];
-              console.log("✅ Extracted filename from download URL:", filename);
-              
-              // Construct the get-file URL
-              const baseUrl = new URL(cleanFinalUrl).origin;
-              const getFileUrl = `${baseUrl}/get-file/${filename}`;
-              console.log("✅ Constructed get-file URL:", getFileUrl);
-              
-              inventoryDownloadUrl = getFileUrl;
+            if (cleanResponseUrl.includes('/download/')) {
+              // Extract filename from download URL
+              const filenameMatch = cleanResponseUrl.match(/\/download\/(.+)$/);
+              if (filenameMatch) {
+                const filename = filenameMatch[1];
+                console.log("✅ Extracted filename from download URL:", filename);
+                
+                // Construct the get-file URL
+                const baseUrl = new URL(cleanResponseUrl).origin;
+                const getFileUrl = `${baseUrl}/get-file/${filename}`;
+                console.log("✅ Constructed get-file URL:", getFileUrl);
+                
+                inventoryDownloadUrl = getFileUrl;
+              }
+            } else {
+              // Try to extract download URL from HTML content
+              const downloadUrlMatch = responseText.match(/href="([^"]*get-file[^"]*\.xlsx)"/);
+              if (downloadUrlMatch) {
+                let extractedUrl = downloadUrlMatch[1];
+                if (extractedUrl.startsWith('/')) {
+                  const baseUrl = new URL(cleanResponseUrl).origin;
+                  extractedUrl = baseUrl + extractedUrl;
+                }
+                console.log("✅ Extracted download URL from HTML:", extractedUrl);
+                inventoryDownloadUrl = extractedUrl;
+              }
+            }
+            
+            if (!inventoryDownloadUrl) {
+              console.log("🔗 Using clean response URL as download URL:", cleanResponseUrl);
+              inventoryDownloadUrl = cleanResponseUrl;
             }
           } else {
-            const finalText = await finalResponse.text();
+            // Wait for background processing to complete
+            console.log("🔄 Detected background processing, waiting for completion...");
             
-            // Check if the HTML contains any download links
-            console.log("📄 Checking final response for download URLs...");
-            console.log("📄 HTML contains 'get-file':", finalText.includes('get-file'));
-            console.log("📄 HTML contains 'download':", finalText.includes('download'));
-            console.log("📄 HTML contains 'Error':", finalText.includes('Error'));
-            console.log("📄 HTML snippet:", finalText.substring(0, 500));
+            const finalResponse = await waitForProcessingComplete(cleanResponseUrl, 300000); // 5 minutes
             
-            const downloadUrlMatch = finalText.match(/href="([^"]*get-file[^"]*\.xlsx)"/);
-            if (downloadUrlMatch) {
-              let extractedUrl = downloadUrlMatch[1];
-              if (extractedUrl.startsWith('/')) {
+            // Clean any proxy URLs from final response
+            let cleanFinalUrl = finalResponse.url.replace('https://api.allorigins.win/raw?url=', '');
+            console.log("🔗 Clean Final URL:", cleanFinalUrl);
+            
+            if (cleanFinalUrl.includes('/download/')) {
+              console.log("✅ Processing complete! Redirected to download page");
+              
+              // Extract filename from download URL
+              const filenameMatch = cleanFinalUrl.match(/\/download\/(.+)$/);
+              if (filenameMatch) {
+                const filename = filenameMatch[1];
+                console.log("✅ Extracted filename from download URL:", filename);
+                
+                // Construct the get-file URL
                 const baseUrl = new URL(cleanFinalUrl).origin;
-                extractedUrl = baseUrl + extractedUrl;
+                const getFileUrl = `${baseUrl}/get-file/${filename}`;
+                console.log("✅ Constructed get-file URL:", getFileUrl);
+                
+                inventoryDownloadUrl = getFileUrl;
               }
-              console.log("✅ Found get-file URL:", extractedUrl);
-              inventoryDownloadUrl = extractedUrl;
             } else {
-              console.log("❌ Could not find download URL in response");
-              if (finalText.includes('Error') || finalText.includes('failed')) {
-                throw new Error('Program Inventory processing failed');
+              const finalText = await finalResponse.text();
+              
+              // Check if the HTML contains any download links
+              console.log("📄 Checking final response for download URLs...");
+              console.log("📄 HTML contains 'get-file':", finalText.includes('get-file'));
+              console.log("📄 HTML contains 'download':", finalText.includes('download'));
+              console.log("📄 HTML contains 'Error':", finalText.includes('Error'));
+              console.log("📄 HTML snippet:", finalText.substring(0, 500));
+              
+              const downloadUrlMatch = finalText.match(/href="([^"]*get-file[^"]*\.xlsx)"/);
+              if (downloadUrlMatch) {
+                let extractedUrl = downloadUrlMatch[1];
+                if (extractedUrl.startsWith('/')) {
+                  const baseUrl = new URL(cleanFinalUrl).origin;
+                  extractedUrl = baseUrl + extractedUrl;
+                }
+                console.log("✅ Found get-file URL:", extractedUrl);
+                inventoryDownloadUrl = extractedUrl;
               } else {
-                console.log("❌ Redirected back to the original form - processing failed");
-                throw new Error('Background processing completed but no download found');
+                console.log("❌ Could not find download URL in response");
+                if (finalText.includes('Error') || finalText.includes('failed')) {
+                  throw new Error('Program Inventory processing failed');
+                } else {
+                  console.log("❌ Redirected back to the original form - processing failed");
+                  throw new Error('Background processing completed but no download found');
+                }
               }
             }
           }
