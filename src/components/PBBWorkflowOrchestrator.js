@@ -277,26 +277,26 @@ const PBBWorkflowOrchestrator = () => {
           console.log("✅ Method 1: Already on task page:", taskUrl);
         }
         
-        // Method 2: Look for task ID in response content
+        // Method 2: Look for task ID in response content (numeric task IDs)
         if (!taskUrl) {
-          const taskUrlMatch = responseText.match(/\/task\/([a-f0-9\-]+)/);
+          const taskUrlMatch = responseText.match(/\/task\/(\d+)/);
           if (taskUrlMatch) {
             const baseUrl = new URL(appUrls.programInventory).origin;
             taskUrl = `${baseUrl}${taskUrlMatch[0]}`;
-            console.log("✅ Method 2: Found task URL in content:", taskUrl);
+            console.log("✅ Method 2: Found numeric task URL in content:", taskUrl);
           }
         }
         
-        // Method 3: Look for meta refresh or JavaScript redirect
+        // Method 3: Look for meta refresh or JavaScript redirect (numeric task IDs)
         if (!taskUrl) {
-          const metaRefreshMatch = responseText.match(/url=([^"'>\s]+task\/[^"'>\s]+)/);
+          const metaRefreshMatch = responseText.match(/url=([^"'>\s]+task\/\d+[^"'>\s]*)/);
           if (metaRefreshMatch) {
             taskUrl = metaRefreshMatch[1];
             if (taskUrl.startsWith('/')) {
               const baseUrl = new URL(appUrls.programInventory).origin;
               taskUrl = baseUrl + taskUrl;
             }
-            console.log("✅ Method 3: Found task URL in meta refresh:", taskUrl);
+            console.log("✅ Method 3: Found numeric task URL in meta refresh:", taskUrl);
           }
         }
 
