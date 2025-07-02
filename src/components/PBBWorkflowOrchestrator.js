@@ -265,8 +265,16 @@ const PBBWorkflowOrchestrator = () => {
           console.log("🔗 Location header found:", locationHeader);
         }
         
+        // Log all headers for debugging
+        console.log("📥 All response headers:");
+        for (let [key, value] of inventoryResponse.headers.entries()) {
+          console.log(`  ${key}: ${value}`);
+        }
+        
         const responseText = await inventoryResponse.text();
-        console.log("📄 Response content preview:", responseText.substring(0, 300));
+        console.log("📄 Full response content (first 1000 chars):", responseText.substring(0, 1000));
+        console.log("📄 Response contains '/task/':", responseText.includes('/task/'));
+        console.log("📄 Response contains 'task':", responseText.includes('task'));
         
         // Look for task URL in multiple ways
         let taskUrl = null;
@@ -279,11 +287,15 @@ const PBBWorkflowOrchestrator = () => {
         
         // Method 2: Look for task ID in response content (numeric task IDs)
         if (!taskUrl) {
+          console.log("🔍 Searching for numeric task ID pattern...");
           const taskUrlMatch = responseText.match(/\/task\/(\d+)/);
+          console.log("🔍 Regex match result:", taskUrlMatch);
           if (taskUrlMatch) {
             const baseUrl = new URL(appUrls.programInventory).origin;
             taskUrl = `${baseUrl}${taskUrlMatch[0]}`;
             console.log("✅ Method 2: Found numeric task URL in content:", taskUrl);
+          } else {
+            console.log("❌ Method 2: No numeric task URL found");
           }
         }
         
