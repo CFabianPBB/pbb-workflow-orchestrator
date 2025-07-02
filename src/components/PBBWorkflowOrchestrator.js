@@ -48,142 +48,23 @@ const PBBWorkflowOrchestrator = () => {
   };
 
   const submitToApp = async (url, formData) => {
+    // For non-file steps, try a simple proxy approach
+    const proxyUrl = 'https://api.allorigins.win/raw?url=';
+    
     try {
-      console.log("🚀 Attempting direct connection to Render app...");
-      
-      // Try direct connection first
-      console.log("🔄 Trying direct POST to:", url);
-      console.log("📋 FormData contents before sending:");
-      let hasFile = false;
-      let hasWebsiteUrl = false;
-      let hasProgramsPerDept = false;
-      
-      for (let [key, value] of formData.entries()) {
-        if (value instanceof File) {
-          console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
-          console.log(`    - Valid file: ${value.size > 0 && value.name.length > 0}`);
-          console.log(`    - File extension: ${value.name.split('.').pop()}`);
-          hasFile = value.size > 0 && value.name.length > 0;
-        } else {
-          console.log(`  ${key}: "${value}"`);
-          if (key === 'website_url' && value && value.length > 0) hasWebsiteUrl = true;
-          if (key === 'programs_per_department' && value) hasProgramsPerDept = true;
-        }
-      }
-      
-      console.log("🔍 Validation check:");
-      console.log(`  - Has valid file: ${hasFile}`);
-      console.log(`  - Has website URL: ${hasWebsiteUrl}`);
-      console.log(`  - Has programs per department: ${hasProgramsPerDept}`);
-
-      // Try direct connection with no-cors mode (bypasses CORS preflight)
-      const response = await fetch(url, {
+      const response = await fetch(proxyUrl + encodeURIComponent(url), {
         method: 'POST',
         body: formData,
-        mode: 'no-cors', // This bypasses CORS entirely
-        redirect: 'follow'
+        mode: 'cors',
+        credentials: 'omit'
       });
-
-      console.log("📥 Response details:");
-      console.log("  - Status:", response.status);
-      console.log("  - Status text:", response.statusText);
-      console.log("  - Response URL:", response.url);
-
-      // With no-cors mode, we can't read the response body, but we can check the URL
-      if (response.url.includes('/task/')) {
-        console.log("✅ Direct POST successful - found task URL in response URL");
-        return response;
-      } else if (response.status === 0) {
-        // Status 0 means no-cors worked but we can't see details
-        console.log("✅ Direct POST sent (no-cors mode) - assuming success");
-        
-        // Since we can't read the response, we need to poll the base URL
-        // and look for a redirect or task creation
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-        
-        // Try to find the task by checking recent tasks
-        try {
-          const checkResponse = await fetch(url, { mode: 'no-cors' });
-          return checkResponse;
-        } catch (e) {
-          console.log("⚠️ Cannot verify task creation with no-cors");
-          return response;
-        }
-      }
-
-      throw new Error(`Direct connection failed with status: ${response.status}`);
-
+      
+      console.log("✅ Proxy method successful");
+      return response;
     } catch (error) {
-      console.log("❌ Direct connection completely failed:", error.message);
-      console.log("💡 Since file uploads don't work through proxies, we'll need to inform the user");
-      throw new Error('File upload failed: CORS proxy cannot handle file uploads. Please use the individual apps directly or enable CORS on the target app.');
+      console.log("❌ Proxy method failed:", error.message);
+      throw error;
     }
-  };
-
-  const waitForProcessingComplete = async (taskUrl, maxWaitTime = 300000) => { // 5 minutes default
-    console.log("⏳ Waiting for background processing to complete...");
-    console.log("🔗 Task URL:", taskUrl);
-    
-    // Clean the task URL to remove any proxy wrapper
-    let cleanTaskUrl = taskUrl.replace('https://api.allorigins.win/raw?url=', '');
-    console.log("🔗 Clean Task URL:", cleanTaskUrl);
-    
-    const startTime = Date.now();
-    const pollInterval = 3000; // 3 seconds
-    
-    while (Date.now() - startTime < maxWaitTime) {
-      try {
-        console.log("🔄 Checking task status...");
-        
-        // Try direct connection first
-        let response;
-        try {
-          response = await fetch(cleanTaskUrl, {
-            method: 'GET',
-            mode: 'cors',
-            credentials: 'include'
-          });
-        } catch (directError) {
-          console.log("⚠️ Direct task check failed, using proxy...");
-          const proxyUrl = 'https://api.allorigins.win/raw?url=';
-          response = await fetch(proxyUrl + encodeURIComponent(cleanTaskUrl));
-        }
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const html = await response.text();
-        
-        // Check if processing is complete
-        if (response.url.includes('/download/') || html.includes('Download Excel File') || html.includes('Programs Generated Successfully')) {
-          console.log("✅ Processing complete! Redirected to download page");
-          return response;
-        }
-        
-        // Check if still processing
-        if (html.includes('Processing') || html.includes('please wait') || html.includes('background')) {
-          console.log("🔄 Still processing... waiting");
-          await new Promise(resolve => setTimeout(resolve, pollInterval));
-          continue;
-        }
-        
-        // Check for errors
-        if (html.includes('Error') || html.includes('failed')) {
-          console.log("❌ Processing failed");
-          throw new Error('Background processing failed');
-        }
-        
-        console.log("🔄 Status unclear, continuing to wait...");
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-      } catch (error) {
-        console.log("❌ Error checking task status:", error.message);
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-      }
-    }
-    
-    throw new Error('Timeout waiting for background processing to complete');
   };
 
   const handleFileUpload = (type, event) => {
@@ -209,253 +90,21 @@ const PBBWorkflowOrchestrator = () => {
     addLog('🚀 Starting PBB Workflow...');
 
     try {
-      // Step 1: Program Inventory Agent
-      addLog('📝 Step 1: Running Program Inventory Agent...');
-      updateAgentStatus('programInventory', 'running');
-
-      try {
-        // Submit to Program Inventory app
-        const inventoryFormData = new FormData();
-        inventoryFormData.append('file', files.personnel);
-        inventoryFormData.append('website_url', files.website || 'https://www.tempe.gov/government/city-clerk-s-office');
-        inventoryFormData.append('programs_per_department', '5');
-
-        console.log("🚀 Submitting to Program Inventory App...");
-        const inventoryResponse = await submitToApp(appUrls.programInventory, inventoryFormData);
-        
-        console.log("📥 Program Inventory Response received");
-        console.log("📥 Response status:", inventoryResponse.status);
-        console.log("📥 Response URL:", inventoryResponse.url);
-        
-        // Clean any proxy URLs from initial response
-        let cleanResponseUrl = inventoryResponse.url.replace('https://api.allorigins.win/raw?url=', '');
-        console.log("🔗 Clean Response URL:", cleanResponseUrl);
-        
-        // Check response headers for location
-        const locationHeader = inventoryResponse.headers.get('location');
-        if (locationHeader) {
-          console.log("🔗 Location header found:", locationHeader);
+      // Step 1: Program Inventory Agent - MANUAL COMPLETION
+      addLog('📝 Step 1: Program Inventory Agent...');
+      updateAgentStatus('programInventory', 'error');
+      
+      setOutputFiles(prev => ({
+        ...prev,
+        programInventory: { 
+          downloadUrl: 'manual',
+          filename: 'Complete this step manually',
+          manualUrl: appUrls.programInventory,
+          manualInstructions: 'File uploads cannot be automated across domains. Please complete Step 1 manually.'
         }
-        
-        // Log all headers for debugging
-        console.log("📥 All response headers:");
-        for (let [key, value] of inventoryResponse.headers.entries()) {
-          console.log(`  ${key}: ${value}`);
-        }
-        
-        const responseText = await inventoryResponse.text();
-        console.log("📄 Full response content (first 1000 chars):", responseText.substring(0, 1000));
-        console.log("📄 Response contains '/task/':", responseText.includes('/task/'));
-        console.log("📄 Response contains 'task':", responseText.includes('task'));
-        
-        // Look for task URL in multiple ways
-        let taskUrl = null;
-        
-        // Method 1: Check if we're already on a task page
-        if (cleanResponseUrl.includes('/task/')) {
-          taskUrl = cleanResponseUrl;
-          console.log("✅ Method 1: Already on task page:", taskUrl);
-        }
-        
-        // Method 2: Look for task ID in response content (numeric task IDs)
-        if (!taskUrl) {
-          console.log("🔍 Searching for numeric task ID pattern...");
-          const taskUrlMatch = responseText.match(/\/task\/(\d+)/);
-          console.log("🔍 Regex match result:", taskUrlMatch);
-          if (taskUrlMatch) {
-            const baseUrl = new URL(appUrls.programInventory).origin;
-            taskUrl = `${baseUrl}${taskUrlMatch[0]}`;
-            console.log("✅ Method 2: Found numeric task URL in content:", taskUrl);
-          } else {
-            console.log("❌ Method 2: No numeric task URL found");
-          }
-        }
-        
-        // Method 3: Look for meta refresh or JavaScript redirect (numeric task IDs)
-        if (!taskUrl) {
-          const metaRefreshMatch = responseText.match(/url=([^"'>\s]+task\/\d+[^"'>\s]*)/);
-          if (metaRefreshMatch) {
-            taskUrl = metaRefreshMatch[1];
-            if (taskUrl.startsWith('/')) {
-              const baseUrl = new URL(appUrls.programInventory).origin;
-              taskUrl = baseUrl + taskUrl;
-            }
-            console.log("✅ Method 3: Found numeric task URL in meta refresh:", taskUrl);
-          }
-        }
-
-        let inventoryDownloadUrl = null;
-
-        // If we found a task URL, use it for polling
-        if (taskUrl) {
-          console.log("🎯 Using task URL for polling:", taskUrl);
-          
-          try {
-            // Wait for processing to complete using the correct task URL
-            const finalResponse = await waitForProcessingComplete(taskUrl, 300000); // 5 minutes
-            
-            // Clean any proxy URLs from final response
-            let cleanFinalUrl = finalResponse.url.replace('https://api.allorigins.win/raw?url=', '');
-            console.log("🔗 Clean Final URL:", cleanFinalUrl);
-            
-            if (cleanFinalUrl.includes('/download/')) {
-              console.log("✅ Processing complete! Redirected to download page");
-              
-              // Extract filename from download URL
-              const filenameMatch = cleanFinalUrl.match(/\/download\/(.+)$/);
-              if (filenameMatch) {
-                const filename = filenameMatch[1];
-                console.log("✅ Extracted filename from download URL:", filename);
-                
-                // Construct the get-file URL
-                const baseUrl = new URL(cleanFinalUrl).origin;
-                const getFileUrl = `${baseUrl}/get-file/${filename}`;
-                console.log("✅ Constructed get-file URL:", getFileUrl);
-                
-                inventoryDownloadUrl = getFileUrl;
-              }
-            }
-            
-          } catch (taskError) {
-            console.log("❌ Could not process using task URL:", taskError.message);
-            updateAgentStatus('programInventory', 'error');
-            addLog(`❌ Program Inventory Agent failed: Could not access task page`);
-            return;
-          }
-        } else {
-          console.log("⚠️ No task URL found, checking if already completed...");
-          
-          // Check if we reached the download page directly
-          if (cleanResponseUrl.includes('/download/') || responseText.includes('Download Excel File') || responseText.includes('Programs Generated Successfully')) {
-            console.log("✅ Processing completed immediately!");
-            
-            if (cleanResponseUrl.includes('/download/')) {
-              // Extract filename from download URL
-              const filenameMatch = cleanResponseUrl.match(/\/download\/(.+)$/);
-              if (filenameMatch) {
-                const filename = filenameMatch[1];
-                console.log("✅ Extracted filename from download URL:", filename);
-                
-                // Construct the get-file URL
-                const baseUrl = new URL(cleanResponseUrl).origin;
-                const getFileUrl = `${baseUrl}/get-file/${filename}`;
-                console.log("✅ Constructed get-file URL:", getFileUrl);
-                
-                inventoryDownloadUrl = getFileUrl;
-              }
-            } else {
-              // Try to extract download URL from HTML content
-              const downloadUrlMatch = responseText.match(/href="([^"]*get-file[^"]*\.xlsx)"/);
-              if (downloadUrlMatch) {
-                let extractedUrl = downloadUrlMatch[1];
-                if (extractedUrl.startsWith('/')) {
-                  const baseUrl = new URL(cleanResponseUrl).origin;
-                  extractedUrl = baseUrl + extractedUrl;
-                }
-                console.log("✅ Extracted download URL from HTML:", extractedUrl);
-                inventoryDownloadUrl = extractedUrl;
-              }
-            }
-            
-            if (!inventoryDownloadUrl) {
-              console.log("🔗 Using clean response URL as download URL:", cleanResponseUrl);
-              inventoryDownloadUrl = cleanResponseUrl;
-            }
-          } else {
-            // Wait for background processing to complete
-            console.log("🔄 Detected background processing, waiting for completion...");
-            
-            const finalResponse = await waitForProcessingComplete(cleanResponseUrl, 300000); // 5 minutes
-            
-            // Clean any proxy URLs from final response
-            let cleanFinalUrl = finalResponse.url.replace('https://api.allorigins.win/raw?url=', '');
-            console.log("🔗 Clean Final URL:", cleanFinalUrl);
-            
-            if (cleanFinalUrl.includes('/download/')) {
-              console.log("✅ Processing complete! Redirected to download page");
-              
-              // Extract filename from download URL
-              const filenameMatch = cleanFinalUrl.match(/\/download\/(.+)$/);
-              if (filenameMatch) {
-                const filename = filenameMatch[1];
-                console.log("✅ Extracted filename from download URL:", filename);
-                
-                // Construct the get-file URL
-                const baseUrl = new URL(cleanFinalUrl).origin;
-                const getFileUrl = `${baseUrl}/get-file/${filename}`;
-                console.log("✅ Constructed get-file URL:", getFileUrl);
-                
-                inventoryDownloadUrl = getFileUrl;
-              }
-            } else {
-              const finalText = await finalResponse.text();
-              
-              // Check if the HTML contains any download links
-              console.log("📄 Checking final response for download URLs...");
-              console.log("📄 HTML contains 'get-file':", finalText.includes('get-file'));
-              console.log("📄 HTML contains 'download':", finalText.includes('download'));
-              console.log("📄 HTML contains 'Error':", finalText.includes('Error'));
-              console.log("📄 HTML snippet:", finalText.substring(0, 500));
-              
-              const downloadUrlMatch = finalText.match(/href="([^"]*get-file[^"]*\.xlsx)"/);
-              if (downloadUrlMatch) {
-                let extractedUrl = downloadUrlMatch[1];
-                if (extractedUrl.startsWith('/')) {
-                  const baseUrl = new URL(cleanFinalUrl).origin;
-                  extractedUrl = baseUrl + extractedUrl;
-                }
-                console.log("✅ Found get-file URL:", extractedUrl);
-                inventoryDownloadUrl = extractedUrl;
-              } else {
-                console.log("❌ Could not find download URL in response");
-                if (finalText.includes('Error') || finalText.includes('failed')) {
-                  throw new Error('Program Inventory processing failed');
-                } else {
-                  console.log("❌ Redirected back to the original form - processing failed");
-                  throw new Error('Background processing completed but no download found');
-                }
-              }
-            }
-          }
-        }
-
-        if (inventoryDownloadUrl) {
-          console.log("✅ Program Inventory Download URL found:", inventoryDownloadUrl);
-          updateAgentStatus('programInventory', 'completed');
-          setOutputFiles(prev => ({
-            ...prev,
-            programInventory: { 
-              downloadUrl: inventoryDownloadUrl,
-              filename: 'Program_Inventory.xlsx'
-            }
-          }));
-          addLog('✅ Program Inventory Agent completed successfully');
-        } else {
-            console.log("❌ File uploads cannot work through CORS proxies");
-          console.log("💡 Alternative: Direct user to complete this step manually");
-          
-          // Instead of failing, provide a manual completion option
-          updateAgentStatus('programInventory', 'error');
-          setOutputFiles(prev => ({
-            ...prev,
-            programInventory: { 
-              downloadUrl: 'manual',
-              filename: 'Manual_Completion_Required',
-              manualUrl: appUrls.programInventory,
-              manualInstructions: 'Please complete this step manually by uploading your file to the Program Inventory app.'
-            }
-          }));
-          addLog('⚠️ Program Inventory Agent requires manual completion');
-          addLog('💡 Click the link to complete this step manually');
-          return; // Skip to next step
-        }
-
-      } catch (inventoryError) {
-        console.log("❌ Program Inventory Error:", inventoryError);
-        updateAgentStatus('programInventory', 'error');
-        addLog(`❌ Program Inventory Agent failed: ${inventoryError.message}`);
-        return;
-      }
+      }));
+      addLog('⚠️ Step 1 requires manual completion due to browser security restrictions');
+      addLog('💡 Click "Complete Manually" to upload your file and get the download');
 
       // Step 2: Cost Allocation Agent
       addLog('💰 Step 2: Running Cost Allocation Agent...');
@@ -575,6 +224,7 @@ const PBBWorkflowOrchestrator = () => {
       }
 
       addLog('🎉 PBB Workflow completed!');
+      addLog('💡 Step 1 requires manual completion - other steps automated');
 
     } catch (error) {
       addLog(`❌ Workflow failed: ${error.message}`);
@@ -679,7 +329,7 @@ const PBBWorkflowOrchestrator = () => {
                   <StatusIcon status={agentStatus.programInventory} />
                 </div>
                 <p className="text-sm text-gray-600">Analyze personnel data and generate program inventory</p>
-                <div className="flex items-center">
+                <div className="flex items-center mt-2">
                   <StatusIcon status={agentStatus.programInventory} />
                   {outputFiles.programInventory && outputFiles.programInventory.downloadUrl === 'manual' ? (
                     <a 
@@ -709,7 +359,7 @@ const PBBWorkflowOrchestrator = () => {
                   <StatusIcon status={agentStatus.costAllocation} />
                 </div>
                 <p className="text-sm text-gray-600">Allocate personnel costs to programs</p>
-                <div className="flex items-center">
+                <div className="flex items-center mt-2">
                   <StatusIcon status={agentStatus.costAllocation} />
                   {outputFiles.costAllocation && (
                     <a 
@@ -730,7 +380,7 @@ const PBBWorkflowOrchestrator = () => {
                   <StatusIcon status={agentStatus.prioritization} />
                 </div>
                 <p className="text-sm text-gray-600">Analyze and rank program priorities</p>
-                <div className="flex items-center">
+                <div className="flex items-center mt-2">
                   <StatusIcon status={agentStatus.prioritization} />
                   {outputFiles.prioritization && (
                     <a 
@@ -751,7 +401,7 @@ const PBBWorkflowOrchestrator = () => {
                   <StatusIcon status={agentStatus.budgetOptimization} />
                 </div>
                 <p className="text-sm text-gray-600">Generate optimized budget recommendations</p>
-                <div className="flex items-center">
+                <div className="flex items-center mt-2">
                   <StatusIcon status={agentStatus.budgetOptimization} />
                   {outputFiles.budgetOptimization && (
                     <a 
